@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>遠雄房地產｜官網成效 BI 儀表板</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="appbar">
+  <div>
+    <div class="eyebrow">遠雄房地產 · 官網成效 BI</div>
+    <h1>官網成效觀察儀表板</h1>
+  </div>
+  <div class="update-info" id="updateInfo">載入中...</div>
+</div>
+
+<div class="tabbar" id="tabbar"></div>
+<main id="mainArea"><div class="loading">資料載入中，請稍候...</div></main>
+<footer>資料來源：GA4到達頁面／Search自然搜尋／GSC查詢字／AI Assistant／GSC生成式AI／站內按鈕UTM／官方分類表。每月更新方式請見📋資料說明分頁。</footer>
+<div class="overlay" id="overlay"><div class="modal" id="modalContent"></div></div>
+
+<!--
+  Chart.js：優先嘗試本機檔案(js/lib/chart.umd.min.js)，若您尚未下載，會自動改用CDN備援。
+  強烈建議：自行下載 https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js
+  另存為 js/lib/chart.umd.min.js，即可完全不依賴外部網路，避免CDN被防火牆擋掉的問題。
+-->
+<script>
+  function loadScript(src, onerror){ return new Promise((resolve)=>{ const s=document.createElement('script'); s.src=src; s.onload=resolve; s.onerror=()=>{ if(onerror) onerror(); resolve(); }; document.head.appendChild(s); }); }
+  async function loadChartJs(){
+    if(typeof Chart !== 'undefined') return;
+    await loadScript('js/lib/chart.umd.min.js', async ()=>{
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js', async ()=>{
+        await loadScript('https://unpkg.com/chart.js@4.4.4/dist/chart.umd.min.js', async ()=>{
+          await loadScript('https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js');
+        });
+      });
+    });
+  }
+</script>
+<script src="js/csv-parser.js"></script>
+<script src="js/classify.js"></script>
+<script src="js/data-loader.js"></script>
+<script>
+  loadChartJs().finally(() => {
+    const s = document.createElement('script');
+    s.src = 'js/app.js';
+    document.body.appendChild(s);
+  });
+</script>
+</body>
+</html>

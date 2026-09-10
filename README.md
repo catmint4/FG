@@ -1,4 +1,3 @@
-[README.md](https://github.com/user-attachments/files/32067684/README.md)
 # 遠雄房地產｜官網成效 BI 儀表板
 
 ## 這是什麼
