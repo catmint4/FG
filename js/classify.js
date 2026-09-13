@@ -66,6 +66,15 @@ function classifyDest(url) {
   return '其他';
 }
 
+// 內文廣告：從圖片名稱解析目的地建案代碼
+function extractBannerDest(imageName) {
+  const s = String(imageName || '');
+  if (/LINE_PROMO/i.test(s)) return 'LINE推廣';
+  const m = s.match(/內文_([A-Za-z]+\d+)/);
+  if (m) return m[1].toUpperCase();
+  return '其他/未標示';
+}
+
 function normUrl(url) {
   let u = String(url || '').trim();
   u = u.replace(/^https?:\/\/[^/]+/, '');

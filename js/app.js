@@ -109,14 +109,14 @@ function applyRange(){
 async function main(){
   buildShell();
   const [pageviewByMonth, trafficByMonth, gscQueryByMonth, gscPageByMonth, aiAssistByMonth,
-         aioPagesByMonth, aioDailyByMonth, utmByMonth, classificationRaw] = await Promise.all([
+         aioPagesByMonth, aioDailyByMonth, utmByMonth, bannerAdsByMonth, classificationRaw] = await Promise.all([
     loadMonthlyFolder('pageview'), loadMonthlyFolder('traffic-source'), loadMonthlyFolder('gsc-query'),
     loadMonthlyFolder('gsc-page'), loadMonthlyFolder('ai-assistant'),
     loadMonthlyFolder('gsc-aio', m => `${m}-pages.csv`), loadMonthlyFolder('gsc-aio', m => `${m}-daily.csv`),
-    loadMonthlyFolder('utm-buttons'), loadSingleFile('data/classification/latest.csv')
+    loadMonthlyFolder('utm-buttons'), loadMonthlyFolder('banner-ads'), loadSingleFile('data/classification/latest.csv')
   ]);
   DATA = { pageview:pageviewByMonth, traffic:trafficByMonth, kw:gscQueryByMonth, seo:gscPageByMonth,
-            ai:aiAssistByMonth, aioPages:aioPagesByMonth, aioDaily:aioDailyByMonth, utm:utmByMonth };
+            ai:aiAssistByMonth, aioPages:aioPagesByMonth, aioDaily:aioDailyByMonth, utm:utmByMonth, bannerAds:bannerAdsByMonth };
   CLS_MAP = buildClassificationMap(classificationRaw);
 
   const monthSet = new Set();
@@ -598,10 +598,13 @@ function renderAIO(mA, mB){
 
 function renderPath(mA){
   const p = document.getElementById('panel-path');
-  const months = mA.filter(m=>DATA.utm[m]);
-  if(!months.length){ renderEmpty('path','什麼內容會導去看建案','此期間尚無資料',['data/utm-buttons/YYYY-MM.csv','GA4漏斗探索匯出表格(待補)']); return; }
-  const destByMonth = {}; const destTotals = {}; const campaignTotals = {};
-  months.forEach(m=>{
+  const utmMonths = mA.filter(m=>DATA.utm[m]);
+  const bannerMonths = mA.filter(m=>DATA.bannerAds[m]);
+  if(!utmMonths.length && !bannerMonths.length){ renderEmpty('path','什麼內容會導去看建案','此期間尚無資料',['data/utm-buttons/YYYY-MM.csv','data/banner-ads/YYYY-MM.csv','GA4漏斗探索匯出表格(待補)']); return; }
+
+  // 文章按鈕UTM
+  let destByMonth = {}, destTotals = {}, campaignTotals = {};
+  utmMonths.forEach(m=>{
     DATA.utm[m].data.forEach(r=>{
       const url = r['網頁路徑']||r['url']; const users = toNum(r['所有使用者']); const dest = classifyDest(url);
       destByMonth[dest] = destByMonth[dest] || {}; destByMonth[dest][m] = (destByMonth[dest][m]||0) + users;
@@ -611,21 +614,66 @@ function renderPath(mA){
   });
   const destTypes = Object.keys(destTotals);
   const campArr = Object.entries(campaignTotals).sort((a,b)=>b[1]-a[1]).slice(0,8);
+
+  // 內文廣告（橫幅）
+  let bannerMonthlyImpr = {}, bannerMonthlyClicks = {}, bannerDestTotals = {}, bannerTotalImpr=0, bannerTotalClicks=0;
+  bannerMonths.forEach(m=>{
+    DATA.bannerAds[m].data.forEach(r=>{
+      const impr = toNum(r['曝光']), clicks = toNum(r['點擊']);
+      const dest = extractBannerDest(r['圖片名稱']);
+      bannerMonthlyImpr[m] = (bannerMonthlyImpr[m]||0) + impr;
+      bannerMonthlyClicks[m] = (bannerMonthlyClicks[m]||0) + clicks;
+      bannerDestTotals[dest] = bannerDestTotals[dest] || {impr:0, clicks:0};
+      bannerDestTotals[dest].impr += impr; bannerDestTotals[dest].clicks += clicks;
+      bannerTotalImpr += impr; bannerTotalClicks += clicks;
+    });
+  });
+  const bannerDestArr = Object.entries(bannerDestTotals).sort((a,b)=>b[1].impr-a[1].impr).slice(0,12);
+  const bannerCTR = bannerTotalImpr ? (bannerTotalClicks/bannerTotalImpr*100) : 0;
+
   p.innerHTML = `
-    ${panelHead('什麼內容會導去看建案', '了解讀內容的訪客，最後有沒有走向建案頁', '站內按鈕/內文廣告UTM點擊', `「廣告活動」欄位是目的地代碼而非來源文章，只能看到「導去哪裡」`)}
-    <div class="card" style="margin-bottom:18px;"><h3>站內按鈕點擊：目的地類型逐月趨勢</h3>${chartBox('pathTrend',240)}</div>
+    ${panelHead('什麼內容會導去看建案', '了解站內導流工具（文章按鈕、內文廣告橫幅）有沒有把讀者帶去建案頁', '站內按鈕UTM點擊 ＋ 內文廣告橫幅曝光/點擊', `「廣告活動」欄位是目的地代碼而非來源文章，只能看到「導去哪裡」`)}
+
+    <h3 class="section-label">Ⓐ 文章內按鈕點擊</h3>
+    ${utmMonths.length ? `
+    <div class="card" style="margin-bottom:18px;"><h3>站內按鈕點擊：目的地類型逐月趨勢</h3>${chartBox('pathTrend',220)}</div>
     <div class="grid2">
       <div class="card"><h3>目的地類型合計</h3><table><thead><tr><th>類型</th><th class="num">使用者數</th></tr></thead>
       <tbody>${destTypes.sort((a,b)=>destTotals[b]-destTotals[a]).map(d=>`<tr><td>${d}</td><td class="num">${fmt(destTotals[d])}</td></tr>`).join('')}</tbody></table></div>
       <div class="card"><h3>依廣告活動代碼（目的地）</h3><table><thead><tr><th>代碼</th><th class="num">使用者數</th></tr></thead>
       <tbody>${campArr.map(([c,v])=>`<tr><td>${c}</td><td class="num">${fmt(v)}</td></tr>`).join('')}</tbody></table></div>
+    </div>` : `<div class="empty-state"><div class="icon">🔲</div><h4>此期間尚無按鈕UTM資料</h4><span class="need-tag">data/utm-buttons/YYYY-MM.csv</span></div>`}
+
+    <h3 class="section-label">Ⓑ 內文廣告橫幅（文章內Banner）</h3>
+    ${bannerMonths.length ? `
+    <div class="stat-row">
+      <div class="stat-chip"><div class="n">${fmt(bannerTotalImpr)}</div><div class="l">橫幅曝光總數</div></div>
+      <div class="stat-chip"><div class="n">${fmt(bannerTotalClicks)}</div><div class="l">橫幅點擊總數</div></div>
+      <div class="stat-chip"><div class="n">${bannerCTR.toFixed(3)}%</div><div class="l">整體點閱率</div></div>
     </div>
-    <div class="empty-state"><div class="icon">🔲</div><h4>GA4漏斗探索資料待補</h4>
+    <div class="card" style="margin-bottom:18px;"><h3>內文廣告逐月曝光/點擊趨勢</h3>${chartBox('bannerTrend',220)}</div>
+    <div class="card"><h3>依目的地建案代碼（點擊圖片名稱解析）</h3><table><thead><tr><th>目的地代碼</th><th class="num">曝光</th><th class="num">點擊</th><th class="num">點閱率</th></tr></thead>
+    <tbody>${bannerDestArr.map(([d,v])=>`<tr><td>${d}</td><td class="num">${fmt(v.impr)}</td><td class="num">${fmt(v.clicks)}</td><td class="num">${v.impr?(v.clicks/v.impr*100).toFixed(2):0}%</td></tr>`).join('')}</tbody></table></div>
+    <div class="note-box">內文廣告整體點閱率偏低（多數月份低於0.1%），代表這個版位的曝光量雖大，但實際帶來的點擊非常有限，建議評估版位設計或改用其他導流方式。</div>
+    ` : `<div class="empty-state"><div class="icon">🔲</div><h4>此期間尚無內文廣告資料</h4><span class="need-tag">data/banner-ads/YYYY-MM.csv</span></div>`}
+
+    <div class="empty-state" style="margin-top:18px;"><div class="icon">🔲</div><h4>GA4漏斗探索資料待補</h4>
     <p>「看過生活提案→看過建案頁（自然流量）」的漏斗步驟人數/轉換率，設定完成後匯出表格即可補上。</p>
     <span class="need-tag">GA4漏斗探索匯出表格</span></div>
   `;
-  safeChart('pathTrend', { type:'bar', data:{ labels: months.map(monthLabel), datasets: destTypes.map((d,i)=>({label:d, data:months.map(m=>destByMonth[d][m]||0), backgroundColor:[RUST,GOLD,TEAL,SLATE,PLUM,STONE][i%6]})) },
-    options:{ plugins:{legend:{position:'bottom'}}, scales:{x:{stacked:true},y:{stacked:true}} } });
+  if(utmMonths.length){
+    safeChart('pathTrend', { type:'bar', data:{ labels: utmMonths.map(monthLabel), datasets: destTypes.map((d,i)=>({label:d, data:utmMonths.map(m=>destByMonth[d][m]||0), backgroundColor:[RUST,GOLD,TEAL,SLATE,PLUM,STONE][i%6]})) },
+      options:{ plugins:{legend:{position:'bottom'}}, scales:{x:{stacked:true},y:{stacked:true}} } });
+  }
+  if(bannerMonths.length){
+    safeChart('bannerTrend', { type:'bar', data:{
+      labels: bannerMonths.map(monthLabel),
+      datasets:[
+        {type:'bar', label:'曝光', data: bannerMonths.map(m=>bannerMonthlyImpr[m]||0), backgroundColor:SAND, yAxisID:'y'},
+        {type:'line', label:'點擊', data: bannerMonths.map(m=>bannerMonthlyClicks[m]||0), borderColor:RUST, backgroundColor:RUST, yAxisID:'y1', tension:.3}
+      ]},
+      options:{ plugins:{legend:{position:'bottom'}}, scales:{ y:{title:{display:true,text:'曝光'}}, y1:{position:'right', title:{display:true,text:'點擊'}, grid:{drawOnChartArea:false}} } } });
+  }
 }
 
 function renderConversion(mA, mB){
@@ -705,7 +753,7 @@ function renderGuide(){
     <div class="card"><h3>目前已偵測到的資料月份</h3>
       <table class="req-table"><thead><tr><th>資料夾</th><th>已有的月份</th></tr></thead><tbody>
         ${stat(DATA.pageview,'data/pageview/')}${stat(DATA.traffic,'data/traffic-source/')}${stat(DATA.kw,'data/gsc-query/')}
-        ${stat(DATA.seo,'data/gsc-page/')}${stat(DATA.ai,'data/ai-assistant/')}${stat(DATA.utm,'data/utm-buttons/')}
+        ${stat(DATA.seo,'data/gsc-page/')}${stat(DATA.ai,'data/ai-assistant/')}${stat(DATA.utm,'data/utm-buttons/')}${stat(DATA.bannerAds,'data/banner-ads/')}
         <tr><td>data/classification/latest.csv</td><td>${Object.keys(CLS_MAP).length ? ('已載入，'+Object.keys(CLS_MAP).length+'筆') : '<i>尚無資料</i>'}</td></tr>
       </tbody></table>
     </div>

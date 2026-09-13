@@ -92,3 +92,4 @@ footer{ padding:20px 28px; font-size:11px; color:#9AA5B1; border-top:1px solid v
 
 table a{ color:var(--teal); text-decoration:none; }
 table a:hover{ text-decoration:underline; }
+.section-label{ font-size:14px; font-weight:700; margin:24px 0 10px; padding-bottom:6px; border-bottom:2px solid var(--line); }
