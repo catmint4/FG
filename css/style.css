@@ -93,3 +93,16 @@ footer{ padding:20px 28px; font-size:11px; color:#9AA5B1; border-top:1px solid v
 table a{ color:var(--teal); text-decoration:none; }
 table a:hover{ text-decoration:underline; }
 .section-label{ font-size:14px; font-weight:700; margin:24px 0 10px; padding-bottom:6px; border-bottom:2px solid var(--line); }
+
+/* ===== v3 新增樣式 ===== */
+.rangebar-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:10px 28px; }
+.rangebar-row label{ font-size:11.5px; color:var(--ink-soft); font-weight:600; white-space:nowrap; }
+.rangebar-row select{ font-size:12px; padding:5px 8px; }
+.rangebar-row span{ color:var(--ink-soft); font-size:12px; }
+.compare-toggle{ display:flex; align-items:center; gap:5px; margin-left:14px; cursor:pointer; }
+.compare-toggle input{ cursor:pointer; }
+#compareFields{ display:inline-flex; align-items:center; gap:8px; }
+.mini-h{ font-size:12px; margin:0 0 6px; color:var(--ink-soft); }
+.url-sub{ font-size:10px; color:#9AA5B1; margin-top:1px; }
+table a{ color:inherit; text-decoration:none; display:block; }
+table a:hover div:first-child{ color:var(--teal); text-decoration:underline; }
