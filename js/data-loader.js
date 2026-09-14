@@ -25,14 +25,46 @@ async function tryFetchText(path) {
     return null;
   }
 }
+async function tryFetchArrayBuffer(path) {
+  try {
+    const res = await fetch(path, { cache: 'no-store' });
+    if (!res.ok) return null;
+    return await res.arrayBuffer();
+  } catch (e) {
+    return null;
+  }
+}
+// 把Excel(.xlsx)第一個工作表解析成跟parseCSV相同的 {headers, data} 格式
+function parseXLSXBuffer(buf) {
+  if (typeof XLSX === 'undefined') return null;
+  try {
+    const wb = XLSX.read(buf, { type: 'array' });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+    const headers = rows.length ? Object.keys(rows[0]) : [];
+    return { headers, data: rows };
+  } catch (e) {
+    console.error('XLSX解析失敗:', e);
+    return null;
+  }
+}
 
 // 依資料夾+月份清單，抓取所有存在的月份，回傳 { month: parsedCSV }
+// 同時支援 .csv 與 .xlsx：先試.csv，找不到再試同名的.xlsx
 async function loadMonthlyFolder(folder, filenamePattern) {
   filenamePattern = filenamePattern || (m => `${m}.csv`);
   const results = {};
   const fetches = MONTH_CANDIDATES.map(async (m) => {
-    const text = await tryFetchText(`data/${folder}/${filenamePattern(m)}`);
-    if (text !== null) results[m] = parseCSV(text);
+    const csvName = filenamePattern(m);
+    const csvPath = `data/${folder}/${csvName}`;
+    const text = await tryFetchText(csvPath);
+    if (text !== null) { results[m] = parseCSV(text); return; }
+    const xlsxPath = `data/${folder}/${csvName.replace(/\.csv$/i, '.xlsx')}`;
+    const buf = await tryFetchArrayBuffer(xlsxPath);
+    if (buf !== null) {
+      const parsed = parseXLSXBuffer(buf);
+      if (parsed) results[m] = parsed;
+    }
   });
   await Promise.all(fetches);
   return results; // { '2026-08': {headers, data}, ... }
@@ -40,8 +72,11 @@ async function loadMonthlyFolder(folder, filenamePattern) {
 
 async function loadSingleFile(path) {
   const text = await tryFetchText(path);
-  if (text === null) return null;
-  return parseCSV(text);
+  if (text !== null) return parseCSV(text);
+  const xlsxPath = path.replace(/\.csv$/i, '.xlsx');
+  const buf = await tryFetchArrayBuffer(xlsxPath);
+  if (buf !== null) return parseXLSXBuffer(buf);
+  return null;
 }
 
 function sortedMonths(obj) {

@@ -41,12 +41,22 @@
       });
     });
   }
+  async function loadXlsxJs(){
+    if(typeof XLSX !== 'undefined') return;
+    await loadScript('js/lib/xlsx.full.min.js', async ()=>{
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', async ()=>{
+        await loadScript('https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js', async ()=>{
+          await loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
+        });
+      });
+    });
+  }
 </script>
 <script src="js/csv-parser.js"></script>
 <script src="js/classify.js"></script>
 <script src="js/data-loader.js"></script>
 <script>
-  loadChartJs().finally(() => {
+  Promise.all([loadChartJs(), loadXlsxJs()]).finally(() => {
     const s = document.createElement('script');
     s.src = 'js/app.js';
     document.body.appendChild(s);

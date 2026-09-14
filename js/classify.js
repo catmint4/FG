@@ -11,13 +11,13 @@ function titleIsBuilding(title) {
   return PROJECT_MARKERS.some(m => t.includes(m));
 }
 
-// 頁面五大分類：建案頁／專家文章／建案熱區巡禮／生活提案(其他)／其他頁面
+// 頁面五大分類：建案頁／專家觀點／在地生活／生活提案(其他)／其他頁面
 function classifyPage(url, title) {
   url = String(url || ''); title = String(title || '');
   if (url.includes('buildings')) return '建案頁';
   if (url.includes('life-proposal')) {
-    if (url.includes('expert')) return '專家文章';
-    if (url.includes('area')) return '建案熱區巡禮';
+    if (url.includes('expert')) return '專家觀點';
+    if (url.includes('area')) return '在地生活';
     return '生活提案(其他)';
   }
   if (titleIsBuilding(title)) return '建案頁';
@@ -78,7 +78,43 @@ function extractBannerDest(imageName) {
 function normUrl(url) {
   let u = String(url || '').trim();
   u = u.replace(/^https?:\/\/[^/]+/, '');
+  u = u.split('#')[0]; // 修正：同一篇文章的錨點連結(#xxx)要合併成同一列，不能各自獨立計算
   u = u.replace(/\/+$/, '');
   if (u && !u.startsWith('/')) u = '/' + u;
   return u;
+}
+
+// 建案代碼 → 案名／區域 對照表
+const BUILDING_MAP = {
+  'H713A': {name:'遠雄幸福成', city:'台中', district:'', area:'台中港特定區市鎮中心'},
+  'H713':  {name:'遠雄幸福成', city:'台中', district:'', area:'台中港特定區市鎮中心'},
+  'H707':  {name:'遠雄星呈', city:'台中', district:'清水', area:'台中港特定區市鎮中心'},
+  'BH5':   {name:'遠雄琉蘊', city:'台中', district:'西屯', area:'水湳'},
+  'BH6':   {name:'遠雄藝舍', city:'台中', district:'西屯', area:'水湳'},
+  'BH8':   {name:'遠雄洄山行', city:'台中', district:'西屯', area:'水湳'},
+  'BH9':   {name:'遠雄綠美', city:'台中', district:'西屯', area:'單元八'},
+  'BH10':  {name:'遠雄敦富', city:'台中', district:'北屯', area:'機廠重劃區'},
+  'EH1':   {name:'遠雄峰蘊', city:'高雄', district:'三民', area:'高雄車站特區'},
+  'EH5':   {name:'遠雄沐蘊', city:'高雄', district:'三民', area:'中都重劃區'},
+  'H902':  {name:'遠雄琢蘊', city:'高雄', district:'三民', area:'科工館'},
+  'BH7':   {name:'遠雄樂元', city:'台中', district:'北屯', area:'機廠重劃區'},
+  'EH2':   {name:'遠雄一靚', city:'高雄', district:'楠梓', area:'高大特區'},
+  'BH11':  {name:'遠雄丰尚', city:'台中', district:'北屯/西屯', area:'14期'},
+  '5VO1':  {name:'聯上智科', city:'北市', district:'北投', area:'北士科'},
+  'FH2':   {name:'遠雄合雅', city:'新北', district:'板橋', area:'湳雅/府中'},
+  'HM2':   {name:'遠雄MetaLink科技園區', city:'桃園', district:'龜山', area:'林口工三工業區華亞科(工五)'},
+  'EH6':   {name:'遠雄蘴靚', city:'高雄', district:'楠梓', area:'82重劃區'},
+  'AH1':   {name:'遠雄明玥', city:'北市', district:'北投', area:'北士科'},
+  'DH6':   {name:'（台南）', city:'台南', district:'中西區', area:'星鑽特區'},
+  'FM5':   {name:'（新北）', city:'新北', district:'泰山', area:'丹鳳站'},
+  'BH13':  {name:'（台中）', city:'台中', district:'西屯', area:''},
+  'HH10':  {name:'（桃園）', city:'桃園', district:'龜山', area:'A7'},
+  'HH9':   {name:'（桃園）', city:'桃園', district:'中壢', area:'中壢體育園區'},
+  'BH12':  {name:'（台中）', city:'台中', district:'北屯', area:'14期'},
+  'DH7':   {name:'（台南）', city:'台南', district:'東區', area:'鄰近平實重劃區'},
+  'EH7':   {name:'（高雄）', city:'高雄', district:'鼓山', area:'美術館特區'}
+};
+function getBuildingInfo(code){
+  const c = String(code||'').toUpperCase().replace(/[()（）]/g,'').replace(/廠$/,'').trim();
+  return BUILDING_MAP[c] || null;
 }

@@ -106,3 +106,12 @@ table a:hover{ text-decoration:underline; }
 .url-sub{ font-size:10px; color:#9AA5B1; margin-top:1px; }
 table a{ color:inherit; text-decoration:none; display:block; }
 table a:hover div:first-child{ color:var(--teal); text-decoration:underline; }
+.grid2-equal{ display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+@media (max-width:900px){ .grid2-equal{ grid-template-columns:1fr; } }
+.threshold-ctrl{ display:flex; align-items:center; gap:8px; margin-bottom:14px; font-size:12px; color:var(--ink-soft); }
+.threshold-ctrl input[type=number]{ width:56px; border:1px solid var(--line); border-radius:6px; padding:4px 6px; font-family:'Inter'; font-size:12.5px; }
+.threshold-ctrl button{ background:var(--teal); color:#fff; border:none; border-radius:6px; padding:5px 14px; font-size:11.5px; font-weight:600; cursor:pointer; }
+table.sortable thead th{ position:relative; user-select:none; }
+table.sortable thead th:hover{ background:#2A3446; }
+table.sortable thead th.sort-asc::after{ content:' ▲'; font-size:9px; }
+table.sortable thead th.sort-desc::after{ content:' ▼'; font-size:9px; }
