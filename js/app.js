@@ -612,13 +612,15 @@ function renderMonitor(){
   const C = (typeof CONFIG === 'object' && CONFIG) ? CONFIG : {};
   const num = (k, d) => { const v = parseFloat(C[k]); return isNaN(v) ? d : v; };
   let TH = {
-    clickDrop: num('點擊跌幅門檻%', 20),      // 點擊較比較期下滑超過此值
-    posWorsen: num('排名退步門檻', 3),         // 平均排名退步超過此名次
-    minImp:    num('最低曝光門檻_月', 300),     // 當期月均曝光低於此值不判定
-    ctrAchieve:num('CTR達成率門檻%', 70),      // 實際CTR ÷ 該排名期望CTR
+    clickDrop: num('點擊跌幅門檻%', 30),
+    posWorsen: num('排名退步門檻', 5),
+    minImp:    num('最低曝光門檻_月', 500),
+    ctrAchieve:num('CTR達成率門檻%', 60),
     exemptDays:num('新頁豁免天數', 90),
-    peakDrop:  num('距高峰跌幅門檻%', 40)
+    peakDrop:  num('距高峰跌幅門檻%', 50),
+    capN:      num('每期處理上限篇數', 15)
   };
+  let peakMode = (C['距高峰基準']==='絕對') ? 'abs' : 'rel';
 
   /* --- 建立 url × month 的序列 --- */
   const S = {};
@@ -657,6 +659,10 @@ function renderMonitor(){
     return pos => { if(!pos) return null; const b=Math.min(20,Math.max(1,Math.round(pos))); return exp[b]||null; };
   }
 
+  /* --- 全站每月總點擊：把站層級的漲跌從個別文章判定中扣掉 --- */
+  const siteTotal = {};
+  months.forEach(m=>{ siteTotal[m] = Object.keys(S).reduce((t,u)=>t+(S[u].c[m]||0),0); });
+
   /* --- 每月 TOP20 名單 → 穩定度（上榜期數 ÷ 總期數） --- */
   const top20Sets = {};
   months.forEach(m=>{
@@ -679,7 +685,7 @@ function renderMonitor(){
     return Math.round((new Date(curEnd+'-28') - new Date(base)) / 86400000);
   }
 
-  let basis='prev', group='all', sortMode='alert';
+  let basis='prev', group='all', sortMode='lost';
 
   p.innerHTML = `
     ${panelHead('內容健康監控', '用一致的規則分出「該立刻改版 / 該觀察 / 資料不足 / 正常」，並直接給出建議動作',
@@ -711,7 +717,7 @@ function renderMonitor(){
         <tr><td>ａ 點擊跌幅</td><td>較比較期下滑 ≥ 門檻</td><td>需求流失或被站內其他文章蠶食</td></tr>
         <tr><td>ｂ 排名退步</td><td>較比較期退步 &gt; 門檻名</td><td>內容過時或競爭者超車</td></tr>
         <tr><td>ｃ CTR 達成率</td><td>低於門檻</td><td>排名還在，但標題／摘要沒吸引力</td></tr>
-        <tr><td>ｄ 距歷史高峰</td><td>較該文最高月下滑 ≥ 門檻</td><td>長期退燒，單看月變化看不出來</td></tr>
+        <tr><td>ｄ 距歷史高峰</td><td>較該文最高月下滑 ≥ 門檻（相對全站模式已先扣掉全站同期跌幅）</td><td>長期退燒，單看月變化看不出來</td></tr>
       </tbody></table>
 
       <h4 class="mini-h" style="margin-top:16px">四、分級與比較期間</h4>
@@ -723,6 +729,9 @@ function renderMonitor(){
       <div class="cap" style="margin-top:10px;line-height:1.8">
         <b>比較期間</b>跟隨上方「檢視月份」：選 1 個月＝月對月，選 3 個月＝季對季。基準可選「上一期（等長）」或「去年同期」——房地產季節性明顯，季度檢視建議用去年同期。<br>
         <b>監控分群</b>：TOP20/30/50 依<u>當期點擊</u>動態排名，會隨檢視月份改變；SEO主打／專家專欄／生活提案一般則是固定的內容角色。<br>
+        <b>距高峰基準</b>建議用「相對全站」：先扣掉全站同期的漲跌，再看這篇<u>比全站多跌了多少</u>。全站流量整體下滑時，用絕對跌幅會讓幾乎每篇都亮紅燈。<br>
+        <b>★ 本期優先</b>：待改善篇數再多，也只有損失點擊最多的前 N 篇會標星號。<u>每期只做這 N 篇</u>，其餘下期再說。N 可用「本期處理上限」調整。<br>
+        <b>損失點擊</b>＝相對比較期少掉的點擊數。用它排序等於<u>依實際流量損失決定優先序</u>，而不是依跌幅百分比——小文章跌 80% 可能只少 20 次點擊。<br>
         <b>門檻</b>預設值來自試算表 config 分頁，下方滑桿只是臨時試算，重新整理會回到試算表設定。
       </div>
       </div>
@@ -764,8 +773,11 @@ function renderMonitor(){
         </select></div>
       <div class="ctrl-group"><label>點擊跌幅門檻</label><div class="row"><input type="range" id="thClick" min="5" max="60" value="${TH.clickDrop}"><span class="ctrl-val" id="thClickV">${TH.clickDrop}%</span></div></div>
       <div class="ctrl-group"><label>最低曝光門檻（期間合計）</label><div class="row"><input type="range" id="thImp" min="0" max="3000" step="50" value="${TH.minImp}"><span class="ctrl-val" id="thImpV">${TH.minImp}</span></div></div>
+      <div class="ctrl-group"><label>距高峰基準</label>
+        <select id="peakSel"><option value="rel">相對全站（建議）</option><option value="abs">絕對跌幅</option></select></div>
+      <div class="ctrl-group"><label>本期處理上限</label><div class="row"><input type="range" id="thCap" min="5" max="50" step="5" value="${TH.capN}"><span class="ctrl-val" id="thCapV">${TH.capN}篇</span></div></div>
       <div class="ctrl-group"><label>排序依據</label>
-        <select id="sortSel"><option value="alert">警示等級</option><option value="clicks">當期點擊</option><option value="drop">跌幅</option></select></div>
+        <select id="sortSel"><option value="lost">損失點擊（建議）</option><option value="alert">警示等級</option><option value="clicks">當期點擊</option><option value="drop">跌幅</option></select></div>
     </div>
     <div class="panel-desc" id="mPeriodNote" style="margin:8px 0 12px"></div>
     <table><thead><tr>
@@ -802,8 +814,14 @@ function renderMonitor(){
       const dAchieve = (achieve!=null && achieve0!=null) ? achieve-achieve0 : null;
       const dClick = (c0>0) ? (c1-c0)/c0*100 : null;
       const dPos = (p1!=null && p0!=null) ? p1-p0 : null;          // 正=退步
-      const peak = Math.max(0, ...months.map(m=>(S[u].c[m]||0)));
-      const peakDrop = peak>0 ? (peak-c1)/peak*100 : 0;
+      let peak=0, peakM=null;
+      months.forEach(m=>{ const v=S[u].c[m]||0; if(v>peak){peak=v;peakM=m;} });
+      const perMonthNow = c1/Math.max(1,cur.length);
+      const siteNow = cur.reduce((t,m)=>t+(siteTotal[m]||0),0)/Math.max(1,cur.length);
+      const siteAtPeak = peakM ? (siteTotal[peakM]||0) : 0;
+      const expectFromPeak = (peakMode==='rel' && siteAtPeak>0) ? peak*(siteNow/siteAtPeak) : peak;
+      const peakDrop = expectFromPeak>0 ? Math.max(0,(expectFromPeak-perMonthNow)/expectFromPeak*100) : 0;
+      const lost = (c0>0 && c1<c0) ? (c0-c1) : (expectFromPeak>perMonthNow ? (expectFromPeak-perMonthNow)*cur.length : 0);
       const age = ageDays(u, curEnd);
       const scissors = (i0>0) ? ((i1-i0)/i0*100 > 0 && dClick!=null && dClick < -10) : false;
 
@@ -838,7 +856,7 @@ function renderMonitor(){
       else if(has('peak')) action='長期退燒，排入改版清單';
       else if(scissors) action='曝光漲但點擊跌，改寫標題';
       else action='維持現狀';
-      return {u, cls, role, c1, i1, dClick, p1, dPos, achieve, dAchieve, peakDrop, status, action, stab: stability[u]||0};
+      return {u, cls, role, c1, i1, dClick, p1, dPos, achieve, dAchieve, peakDrop, lost:Math.round(lost), status, action, stab: stability[u]||0};
     }).filter(r => r.c1>0 || r.i1>0);
     return {rows, cur, base};
   }
@@ -855,6 +873,10 @@ function renderMonitor(){
     document.getElementById('mPeriodNote').innerHTML = cur.length
       ? `當期：${cur[0]} ~ ${cur[cur.length-1]}（${cur.length}個月）　｜　比較基準：${base.length? base[0]+' ~ '+base[base.length-1] : '<b style="color:'+RUST+'">無對應期間，變化欄為空</b>'}`
       : '請於上方選擇檢視月份';
+    const reds = rows.filter(r=>r.status==='red').sort((a,b)=>b.lost-a.lost);
+    const prio = new Set(reds.slice(0,TH.capN).map(r=>r.u));
+    rows.forEach(r=>r.prio = prio.has(r.u));
+
     let shown;
     if(group==='all') shown = rows;
     else if(group.startsWith('TOP')){
@@ -863,11 +885,15 @@ function renderMonitor(){
     } else shown = rows.filter(r => r.role===group);
     const counts={red:0,orange:0,green:0,na:0,exempt:0};
     shown.forEach(r=>counts[r.status]++);
-    document.getElementById('mStatStrip').innerHTML = ['red','orange','green','na','exempt'].map(k=>
+    const prioCount = shown.filter(r=>r.prio).length;
+    document.getElementById('mStatStrip').innerHTML =
+      `<div class="stat-chip" style="border:2px solid ${RUST}"><div class="n" style="color:${RUST}">${prioCount}</div><div class="l">★ 本期優先</div></div>` +
+      ['red','orange','green','na','exempt'].map(k=>
       `<div class="stat-chip"><div class="n" style="color:${COLOR[k]}">${counts[k]}</div><div class="l">${BADGE[k]}</div></div>`).join('');
     const ord={red:0,orange:1,green:2,exempt:3,na:4};
     let list=shown.slice();
-    if(sortMode==='alert') list.sort((a,b)=>ord[a.status]-ord[b.status] || b.c1-a.c1);
+    if(sortMode==='lost') list.sort((a,b)=>(b.prio?1:0)-(a.prio?1:0) || b.lost-a.lost);
+    else if(sortMode==='alert') list.sort((a,b)=>ord[a.status]-ord[b.status] || b.lost-a.lost);
     else if(sortMode==='clicks') list.sort((a,b)=>b.c1-a.c1);
     else list.sort((a,b)=>(a.dClick??0)-(b.dClick??0));
     list=list.slice(0,120);
@@ -879,9 +905,9 @@ function renderMonitor(){
       const ordv = {red:0,orange:1,green:2,exempt:3,na:4}[r.status];
       return `<tr onclick='openMonitorModal(${JSON.stringify(r.u)})'>
         <td data-sort="${ordv}"><span class="dot ${r.status==='na'||r.status==='exempt'?'green':r.status}" style="background:${COLOR[r.status]}"></span></td>
-        <td data-sort="${(getArticleTitle(r.u)||'').replace(/"/g,'')}"><b>${getArticleTitle(r.u)}</b><div class="url-sub">${r.u}</div></td>
+        <td data-sort="${(getArticleTitle(r.u)||'').replace(/"/g,'')}">${r.prio?`<span style="color:${RUST};font-weight:700">★ </span>`:''}<b>${getArticleTitle(r.u)}</b><div class="url-sub">${r.u}</div></td>
         <td>${(r.cls.big||'')}${r.cls.mid?' / '+r.cls.mid:''}</td>
-        <td class="num" data-sort="${r.c1}">${fmt(r.c1)}</td>
+        <td class="num" data-sort="${r.c1}">${fmt(r.c1)}${r.lost>0?`<div class="url-sub" style="color:${RUST}">少 ${fmt(r.lost)}</div>`:''}</td>
         <td class="num" data-sort="${r.dClick==null?'':r.dClick.toFixed(2)}">${dc}</td>
         <td class="num" data-sort="${r.p1==null?'':r.p1.toFixed(2)}">${r.p1?r.p1.toFixed(1):'—'}</td>
         <td class="num" data-sort="${r.dPos==null?'':r.dPos.toFixed(2)}">${dp}</td>
@@ -932,6 +958,8 @@ function renderMonitor(){
   document.getElementById('sortSel').addEventListener('change', e=>{ sortMode=e.target.value; render(); });
   document.getElementById('thClick').addEventListener('input', e=>{ TH.clickDrop=+e.target.value; document.getElementById('thClickV').textContent=TH.clickDrop+'%'; render(); });
   document.getElementById('thImp').addEventListener('input', e=>{ TH.minImp=+e.target.value; document.getElementById('thImpV').textContent=TH.minImp; render(); });
+  document.getElementById('thCap').addEventListener('input', e=>{ TH.capN=+e.target.value; document.getElementById('thCapV').textContent=TH.capN+'篇'; render(); });
+  document.getElementById('peakSel').addEventListener('change', e=>{ peakMode=e.target.value; render(); });
   render();
 }
 
