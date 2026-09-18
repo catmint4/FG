@@ -8,7 +8,7 @@
    ============================================================ */
 
 /* ① 把這裡換成你的試算表 ID（網址 /d/ 和 /edit 中間那一段） */
-const SHEET_ID = "請貼上你的試算表ID";
+const SHEET_ID = "1fLaU8ggIswnLTuH8z1-NYTCY0qapZrTdYutjJ2iZlrM";
 
 /* ② 分頁名稱對應。左邊是 app.js 原本呼叫的資料夾名，右邊是試算表分頁名。 */
 const SHEET_MAP = {
