@@ -657,6 +657,19 @@ function renderMonitor(){
     return pos => { if(!pos) return null; const b=Math.min(20,Math.max(1,Math.round(pos))); return exp[b]||null; };
   }
 
+  /* --- 每月 TOP20 名單 → 穩定度（上榜期數 ÷ 總期數） --- */
+  const top20Sets = {};
+  months.forEach(m=>{
+    const arr = Object.keys(S).map(u=>({u, c:S[u].c[m]||0})).filter(x=>x.c>0)
+                  .sort((a,b)=>b.c-a.c).slice(0,20).map(x=>x.u);
+    top20Sets[m] = new Set(arr);
+  });
+  const stability = {};
+  Object.keys(S).forEach(u=>{
+    const hit = months.filter(m=>top20Sets[m].has(u)).length;
+    stability[u] = months.length ? hit/months.length*100 : 0;
+  });
+
   /* --- 首次出現月份（沒有上刊日時的備援） --- */
   const firstSeen={}; Object.keys(S).forEach(u=>{ const ms=months.filter(m=>S[u].c[m]!=null||S[u].i[m]>0); firstSeen[u]=ms.length?ms[0]:null; });
   function ageDays(url, curEnd){
@@ -671,9 +684,9 @@ function renderMonitor(){
   p.innerHTML = `
     ${panelHead('內容健康監控', '用一致的規則分出「該立刻改版 / 該觀察 / 資料不足 / 正常」，並直接給出建議動作',
       'Google Search Console ＋ 文章對應分類表', '期間跟隨上方「檢視月份」；門檻可在試算表 config 分頁調整')}
-    <div class="card" style="margin-bottom:14px;background:#FAF8F4">
-      <h3 style="margin-top:0">判定規則</h3>
-      <div class="cap" style="line-height:1.85">
+    <details class="card" style="margin-bottom:14px;background:#FAF8F4">
+      <summary style="cursor:pointer;font-weight:700;font-size:13px;list-style:none">▸ 判定規則說明（點開）</summary>
+      <div class="cap" style="line-height:1.85;margin-top:10px">
         每篇文章依序通過三道閘門，前兩道先把「不該判定的」排除掉，剩下的才計算觸發了幾項條件。<br>
         <b>閘門①　曝光門檻</b>：期間合計曝光低於門檻 → <b>⚪ 資料不足</b>。避免 5 次點擊掉到 4 次就被當成 −20% 的誤判。<br>
         <b>閘門②　新頁豁免</b>：上刊未滿設定天數 → <b>⚪ 豁免中</b>。新文章的排名爬升期本來就會震盪，不判定衰退。上刊日取自分類表。<br>
@@ -681,20 +694,33 @@ function renderMonitor(){
         <div style="margin:6px 0 6px 14px">
           ａ<b>點擊跌幅</b>：本期點擊較比較期下滑 ≥ 門檻<br>
           ｂ<b>排名退步</b>：平均排名較比較期退步 &gt; 門檻名（用曝光加權計算）<br>
-          ｃ<b>CTR 達成率</b>：實際 CTR ÷ <u>本站同排名區間的中位數 CTR</u> &lt; 門檻。比絕對 CTR 公平——第 8 名本來就只有 2~3%<br>
+          ｃ<b>CTR 達成率</b>：實際 CTR ÷ <u>本站同排名區間的中位數 CTR</u> &lt; 門檻。<br>
+          　　例：某文排第 8 名、CTR 2.4%，而本站第 8 名的中位數是 3.0% → 達成率 80%。100% 代表「跟同排名的其他文章表現一樣」。<br>
+          　　為什麼不用絕對 CTR：第 3 名本來就該有 10%、第 8 名只有 3%，用絕對值比會把排名後段的文章全部誤殺。<br>
+          　　欄位下方的小字是<b>達成率較比較期的增減</b>。這個數字很關鍵——它把排名變動的影響剔除了，<u>達成率下滑代表標題或摘要真的失去吸引力</u>，而不是因為掉名次。<br>
           ｄ<b>距歷史高峰</b>：本期點擊較該文歷史最高月下滑 ≥ 門檻
         </div>
         <b>分級</b>：命中 2 項以上 → <b style="color:#A14232">🔴 立即處理</b>　｜　命中 1 項 → <b style="color:#B8892B">🟠 需關注</b>　｜　未命中但已達門檻七成 → <b style="color:#8A7A1E">🟡 觀察中</b>　｜　皆未命中 → <b style="color:#2F6B5F">🟢 正常</b><br>
         <b>比較期間</b>跟隨上方「檢視月份」。選 1 個月＝月對月，選 3 個月＝季對季。基準可選「上一期（等長）」或「去年同期」——房地產有明顯季節性，季度檢視建議用去年同期。<br>
+        <b>穩定度</b>＝該文在全部 ${months.length} 個月當中、進入當月點擊 TOP20 的比例。100% 代表長期穩居前段；原本穩定度高但現在掉出榜單，是最該立刻查的訊號。<br>
+        <b>監控分群</b>：TOP20/30/50 是依<u>當期點擊</u>動態排名，會隨檢視月份改變；SEO主打／專家專欄／生活提案一般則是固定的內容角色。<br>
         <b>門檻</b>預設值來自試算表 config 分頁，下方滑桿只是臨時試算，重新整理會回到試算表的設定。
       </div>
-    </div>
+    </details>
     <div class="stat-row" id="mStatStrip"></div>
     <div class="controls">
       <div class="ctrl-group"><label>比較基準</label>
         <select id="basisSel"><option value="prev">上一期（等長）</option><option value="yoy">去年同期</option></select></div>
       <div class="ctrl-group"><label>監控分群</label>
-        <select id="groupSel"><option value="all">全部</option><option value="SEO主打文章">SEO主打</option><option value="專家專欄">專家專欄</option><option value="生活提案一般">生活提案一般</option></select></div>
+        <select id="groupSel">
+          <option value="all">全部文章</option>
+          <option value="TOP20">TOP20（當期點擊前20名）</option>
+          <option value="TOP30">TOP30</option>
+          <option value="TOP50">TOP50</option>
+          <option value="SEO主打文章">SEO主打（9篇）</option>
+          <option value="專家專欄">專家專欄</option>
+          <option value="生活提案一般">生活提案一般</option>
+        </select></div>
       <div class="ctrl-group"><label>點擊跌幅門檻</label><div class="row"><input type="range" id="thClick" min="5" max="60" value="${TH.clickDrop}"><span class="ctrl-val" id="thClickV">${TH.clickDrop}%</span></div></div>
       <div class="ctrl-group"><label>最低曝光門檻（期間合計）</label><div class="row"><input type="range" id="thImp" min="0" max="3000" step="50" value="${TH.minImp}"><span class="ctrl-val" id="thImpV">${TH.minImp}</span></div></div>
       <div class="ctrl-group"><label>排序依據</label>
@@ -702,13 +728,14 @@ function renderMonitor(){
     </div>
     <div class="panel-desc" id="mPeriodNote" style="margin:8px 0 12px"></div>
     <table><thead><tr><th style="width:20px"></th><th>文章</th><th>分類</th><th class="num">當期點擊</th><th class="num">變化</th>
-      <th class="num">平均排名</th><th class="num">排名變化</th><th class="num">CTR達成率</th><th>建議動作</th></tr></thead>
-    <tbody id="mTableBody"></tbody></table>`;
+      <th class="num">平均排名</th><th class="num">排名變化</th><th class="num">CTR達成率</th><th class="num">穩定度</th><th>建議動作</th></tr></thead>
+    <tbody id="mTableBody"></tbody><tfoot id="mTableFoot"></tfoot></table>`;
 
   function evaluate(){
     const cur = periodMonths(); if(!cur.length) return {rows:[], cur:[], base:[]};
     const base = basisMonths(cur, basis);
     const expCtr = buildExpectedCtr(cur);
+    const expCtr0 = base.length ? buildExpectedCtr(base) : null;
     const curEnd = cur[cur.length-1];
     const rows = Object.keys(S).map(u=>{
       const cls = CLS_MAP[u] || {};
@@ -718,12 +745,17 @@ function renderMonitor(){
       const ctr = i1>0 ? c1/i1 : null;
       const e = expCtr(p1);
       const achieve = (ctr!=null && e) ? ctr/e*100 : null;
+      const i0 = sum(u,base,'i');
+      const ctr0 = i0>0 ? c0/i0 : null;
+      const e0 = expCtr0 ? expCtr0(p0) : null;
+      const achieve0 = (ctr0!=null && e0) ? ctr0/e0*100 : null;
+      const dAchieve = (achieve!=null && achieve0!=null) ? achieve-achieve0 : null;
       const dClick = (c0>0) ? (c1-c0)/c0*100 : null;
       const dPos = (p1!=null && p0!=null) ? p1-p0 : null;          // 正=退步
       const peak = Math.max(0, ...months.map(m=>(S[u].c[m]||0)));
       const peakDrop = peak>0 ? (peak-c1)/peak*100 : 0;
       const age = ageDays(u, curEnd);
-      const scissors = (base.length && sum(u,base,'i')>0) ? ((i1-sum(u,base,'i'))/sum(u,base,'i')*100 > 0 && dClick!=null && dClick < -10) : false;
+      const scissors = (i0>0) ? ((i1-i0)/i0*100 > 0 && dClick!=null && dClick < -10) : false;
 
       let status, reasons=[];
       if(i1 < TH.minImp){ status='na'; }
@@ -748,7 +780,7 @@ function renderMonitor(){
       else if(reasons.includes('ctr') || scissors) action='改標題與 meta 描述';
       else if(reasons.includes('click')) action='檢查是否被新內容蠶食';
       else if(status==='yellow') action='列入觀察，下期再看';
-      return {u, cls, role, c1, i1, dClick, p1, dPos, achieve, peakDrop, status, action};
+      return {u, cls, role, c1, i1, dClick, p1, dPos, achieve, dAchieve, peakDrop, status, action, stab: stability[u]||0};
     }).filter(r => r.c1>0 || r.i1>0);
     return {rows, cur, base};
   }
@@ -761,7 +793,12 @@ function renderMonitor(){
     document.getElementById('mPeriodNote').innerHTML = cur.length
       ? `當期：${cur[0]} ~ ${cur[cur.length-1]}（${cur.length}個月）　｜　比較基準：${base.length? base[0]+' ~ '+base[base.length-1] : '<b style="color:'+RUST+'">無對應期間，變化欄為空</b>'}`
       : '請於上方選擇檢視月份';
-    const shown = rows.filter(r => group==='all' || r.role===group);
+    let shown;
+    if(group==='all') shown = rows;
+    else if(group.startsWith('TOP')){
+      const n = parseInt(group.slice(3),10);
+      shown = rows.slice().sort((a,b)=>b.c1-a.c1).slice(0,n);
+    } else shown = rows.filter(r => r.role===group);
     const counts={red:0,orange:0,yellow:0,green:0,na:0,exempt:0};
     shown.forEach(r=>counts[r.status]++);
     document.getElementById('mStatStrip').innerHTML = ['red','orange','yellow','green','na','exempt'].map(k=>
@@ -775,7 +812,8 @@ function renderMonitor(){
     document.getElementById('mTableBody').innerHTML = list.map(r=>{
       const dc = r.dClick==null ? '—' : `<span style="color:${r.dClick>=0?TEAL:RUST}">${r.dClick>=0?'▲':'▼'}${Math.abs(r.dClick).toFixed(0)}%</span>`;
       const dp = r.dPos==null ? '—' : `<span style="color:${r.dPos<=0?TEAL:RUST}">${r.dPos>0?'+':''}${r.dPos.toFixed(1)}</span>`;
-      const ac = r.achieve==null ? '—' : `<span style="color:${r.achieve<TH.ctrAchieve?RUST:INK}">${r.achieve.toFixed(0)}%</span>`;
+      const ac = r.achieve==null ? '—' : `<span style="color:${r.achieve<TH.ctrAchieve?RUST:INK}">${r.achieve.toFixed(0)}%</span>` +
+        (r.dAchieve==null ? '' : `<div class="url-sub" style="color:${r.dAchieve>=0?TEAL:RUST}">${r.dAchieve>=0?'+':''}${r.dAchieve.toFixed(0)}pt</div>`);
       const ordv = {red:0,orange:1,yellow:2,green:3,exempt:4,na:5}[r.status];
       return `<tr onclick='openMonitorModal(${JSON.stringify(r.u)})'>
         <td data-sort="${ordv}"><span class="dot ${r.status==='na'||r.status==='exempt'?'green':r.status}" style="background:${COLOR[r.status]}"></span></td>
@@ -786,8 +824,29 @@ function renderMonitor(){
         <td class="num" data-sort="${r.p1==null?'':r.p1.toFixed(2)}">${r.p1?r.p1.toFixed(1):'—'}</td>
         <td class="num" data-sort="${r.dPos==null?'':r.dPos.toFixed(2)}">${dp}</td>
         <td class="num" data-sort="${r.achieve==null?'':r.achieve.toFixed(1)}">${ac}</td>
+        <td class="num" data-sort="${r.stab.toFixed(1)}">${r.stab>0?r.stab.toFixed(0)+'%':'—'}</td>
         <td data-sort="${ordv}"><span class="badge ${r.status==='na'||r.status==='exempt'?'green':r.status}">${BADGE[r.status]}</span><div class="url-sub">${r.action}</div></td></tr>`;
-    }).join('') || `<tr><td colspan="9" style="text-align:center;padding:24px;color:#888">此分群在本期間沒有資料</td></tr>`;
+    }).join('') || `<tr><td colspan="10" style="text-align:center;padding:24px;color:#888">此分群在本期間沒有資料</td></tr>`;
+
+    /* 合計／加權平均：點擊與曝光用加總後再算，不是平均各篇的百分比 */
+    const C1=list.reduce((s,r)=>s+r.c1,0), I1=list.reduce((s,r)=>s+r.i1,0);
+    const wp=list.filter(r=>r.p1!=null&&r.i1>0);
+    const avgPos = wp.length ? wp.reduce((s,r)=>s+r.p1*r.i1,0)/wp.reduce((s,r)=>s+r.i1,0) : null;
+    const wa=list.filter(r=>r.achieve!=null&&r.i1>0);
+    const avgAch = wa.length ? wa.reduce((s,r)=>s+r.achieve*r.i1,0)/wa.reduce((s,r)=>s+r.i1,0) : null;
+    const dc=list.filter(r=>r.dClick!=null);
+    const sumC0 = dc.reduce((s,r)=>s+r.c1/(1+r.dClick/100),0);
+    const totDelta = sumC0>0 ? (dc.reduce((s,r)=>s+r.c1,0)-sumC0)/sumC0*100 : null;
+    const avgStab = list.length ? list.reduce((s,r)=>s+r.stab,0)/list.length : 0;
+    document.getElementById('mTableFoot').innerHTML = list.length ? `
+      <tr style="background:#F4F1EA;font-weight:700">
+        <td class="nosort"></td><td>合計／加權平均（目前顯示 ${list.length} 篇）</td><td></td>
+        <td class="num">${fmt(C1)}</td>
+        <td class="num">${totDelta==null?'—':`<span style="color:${totDelta>=0?TEAL:RUST}">${totDelta>=0?'▲':'▼'}${Math.abs(totDelta).toFixed(0)}%</span>`}</td>
+        <td class="num">${avgPos?avgPos.toFixed(1):'—'}</td><td class="num">—</td>
+        <td class="num">${avgAch?avgAch.toFixed(0)+'%':'—'}</td>
+        <td class="num">${avgStab.toFixed(0)}%</td>
+        <td>曝光合計 ${fmt(I1)}</td></tr>` : '';
   }
 
   window.openMonitorModal = function(url){
