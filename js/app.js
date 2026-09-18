@@ -1,7 +1,7 @@
 // app.js — 主程式（v3：修正卡住的載入畫面、合併分頁、深化分析、精簡日期列）
 
 const INK="#1B2430", TEAL="#2F6F5E", GOLD="#C08A3E", RUST="#B5533C", SLATE="#5C7290", PLUM="#7A5C7E", MOSS="#7A8B5A", SAND="#D8C9A3", STONE="#8C97A6";
-const CAT_COLORS = {"建案頁":RUST,"生活提案(其他)":SAND,"專家觀點":PLUM,"在地生活":MOSS,"其他頁面":STONE};
+const CAT_COLORS = {"建案頁":RUST,"生活提案(其他)":SAND,"專家文章":PLUM,"建案熱區巡禮":MOSS,"其他頁面":STONE};
 const CHAN_COLORS = {"LINE":"#06C755","Paid Search/Display":GOLD,"Direct":SLATE,"Organic Social":PLUM,"Organic Search":TEAL,"Other":STONE,"Unassigned":"#C2C2C2","Referral":SAND,"Paid Social":RUST};
 const BIG_COLORS = {"稅務與繼承":TEAL,"不動產交易":SLATE,"區域環境":SAND,"建築與品牌":MOSS,"居住與維護":PLUM,"市場與政策":STONE,"商用不動產":GOLD};
 const SITE_ORIGIN = "https://www.farglory-realty.com.tw";
@@ -11,39 +11,6 @@ function pct(n){ return (n>0?'+':'') + n.toFixed(1) + '%'; }
 function hasChart(){ return typeof Chart !== 'undefined'; }
 function linkFor(url){ return SITE_ORIGIN + url; }
 function chartBox(id, heightPx){ return `<div class="chart-box" style="height:${heightPx||220}px"><canvas id="${id}"></canvas></div>`; }
-// 讓表格可點欄位排序：table需標記 class="sortable"，欲排序欄位加 data-sort-key="數值"（放在td上，若省略則用文字內容排序）
-function makeSortable(table){
-  if(!table || table.dataset.sortableBound) return;
-  table.dataset.sortableBound = '1';
-  const thead = table.querySelector('thead'); if(!thead) return;
-  const ths = thead.querySelectorAll('th');
-  ths.forEach((th, idx)=>{
-    th.style.cursor = 'pointer';
-    th.title = '點擊排序';
-    th.addEventListener('click', ()=>{
-      const tbody = table.querySelector('tbody');
-      const rows = Array.from(tbody.querySelectorAll('tr'));
-      const dir = th.dataset.sortDir === 'asc' ? 'desc' : 'asc';
-      ths.forEach(t=>{ delete t.dataset.sortDir; t.classList.remove('sort-asc','sort-desc'); });
-      th.dataset.sortDir = dir;
-      th.classList.add(dir==='asc'?'sort-asc':'sort-desc');
-      rows.sort((a,b)=>{
-        const ca = a.children[idx], cb = b.children[idx];
-        const va = ca.dataset.sortKey !== undefined ? parseFloat(ca.dataset.sortKey) : ca.textContent.trim();
-        const vb = cb.dataset.sortKey !== undefined ? parseFloat(cb.dataset.sortKey) : cb.textContent.trim();
-        let cmp;
-        if(typeof va === 'number' && typeof vb === 'number' && !isNaN(va) && !isNaN(vb)) cmp = va - vb;
-        else cmp = String(va).localeCompare(String(vb), 'zh-Hant');
-        return dir==='asc' ? cmp : -cmp;
-      });
-      rows.forEach(r=>tbody.appendChild(r));
-    });
-  });
-}
-function bindAllSortable(root){
-  (root||document).querySelectorAll('table.sortable').forEach(makeSortable);
-}
-function cssId(s){ return String(s).replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g,'_'); }
 function safeChart(canvasId, config){
   if(!hasChart()){
     const el = document.getElementById(canvasId);
@@ -107,14 +74,6 @@ function panelHead(title, purpose, source, note){
 }
 function monthsInRange(start, end){ return ALL_MONTHS.filter(m => m >= start && m <= end); }
 function monthLabel(m){ return m.slice(2).replace('-','/'); }
-function periodLabel(months){
-  const n = months.length;
-  if(n===1) return '1個月';
-  if(n===3) return '3個月(一季)';
-  if(n===6) return '6個月(半年)';
-  if(n===12) return '12個月(一年)';
-  return `${n}個月`;
-}
 function previousPeriodMonths(mA){
   if(!mA.length) return [];
   const idx0 = ALL_MONTHS.indexOf(mA[0]);
@@ -125,12 +84,6 @@ function previousPeriodMonths(mA){
 }
 function getArticleTitle(url){
   return TITLE_MAP[url] || (CLS_MAP[url] && CLS_MAP[url].title) || url;
-}
-// 產生「哪些月份沒資料」的提示文字，讓使用者一眼看出要補哪個月，而不是誤以為是0
-function missingMonthsNote(series){
-  const missing = series.filter(s=>s.hasData===false).map(s=>monthLabel(s.month));
-  if(!missing.length) return '';
-  return `　｜　<span style="color:${RUST}">⚠️ 無資料月份（非0，是尚未提供）：${missing.join('、')}</span>`;
 }
 
 /* ============ 精簡版日期區間列 ============ */
@@ -171,14 +124,17 @@ function applyRange(){
 async function main(){
   buildShell();
   const [pageviewByMonth, trafficByMonth, gscQueryByMonth, gscPageByMonth, aiAssistByMonth,
-         aioPagesByMonth, aioDailyByMonth, utmByMonth, bannerAdsByMonth, classificationRaw] = await Promise.all([
+         aioPagesByMonth, aioDailyByMonth, utmByMonth, bannerAdsByMonth, classificationRaw,
+         configRaw] = await Promise.all([
     loadMonthlyFolder('pageview'), loadMonthlyFolder('traffic-source'), loadMonthlyFolder('gsc-query'),
     loadMonthlyFolder('gsc-page'), loadMonthlyFolder('ai-assistant'),
     loadMonthlyFolder('gsc-aio', m => `${m}-pages.csv`), loadMonthlyFolder('gsc-aio', m => `${m}-daily.csv`),
-    loadMonthlyFolder('utm-buttons'), loadMonthlyFolder('banner-ads'), loadSingleFile('data/classification/latest.csv')
+    loadMonthlyFolder('utm-buttons'), loadMonthlyFolder('banner-ads'), loadSingleFile('data/classification/latest.csv'),
+    (typeof loadConfig === 'function' ? loadConfig() : Promise.resolve({}))
   ]);
   DATA = { pageview:pageviewByMonth, traffic:trafficByMonth, kw:gscQueryByMonth, seo:gscPageByMonth,
             ai:aiAssistByMonth, aioPages:aioPagesByMonth, aioDaily:aioDailyByMonth, utm:utmByMonth, bannerAds:bannerAdsByMonth };
+  window.CONFIG = configRaw || {};
   CLS_MAP = buildClassificationMap(classificationRaw);
 
   // 建立全站標題對照表（供文章連結顯示標題用）
@@ -203,14 +159,44 @@ function renderAll(){
   renderTraffic(mA, mB);
   renderKeywords(mA, mB);
   renderSEO(mA, mB);
-  renderMonitor(mA);
+  renderMonitor();
   renderAIO(mA, mB);
   renderPath(mA);
   renderConversion(mA, mB);
   renderBuilding(mA);
   renderSocial();
   renderGuide();
-  bindAllSortable();
+}
+
+
+/* 監控角色：SEO主打（人工指定9篇）／專家專欄／建案頁／生活提案一般 */
+const SEO_URLS = new Set([
+  '/life-proposal/pre-sale-property',
+  '/life-proposal/how-to-calculate-house-size',
+  '/life-proposal/things-to-note-when-viewing-a-house-2',
+  '/life-proposal/kw_brand_construction_20240109',
+  '/life-proposal/pre-sale-house-payment-methods',
+  '/life-proposal/seo_youth-home-loan',
+  '/life-proposal/area_presold-house-in-kaohsiung',
+  '/life-proposal/area_presold-house-in-tainan',
+  '/life-proposal/area_presold-house-in-taichung'
+]);
+const EXPERT_KEYS = [['law_y-rlee','律師'],['hoshichang','何世昌'],['housing-market','何世昌'],
+  ['peizhen','劉佩真'],['macromicro','財經M平方'],['expert_zhu','朱智豪'],
+  ['expert_li','李同榮'],['expert-li','李同榮']];
+function expertOf(url){
+  const s = String(url||'');
+  if(s.includes('expert_ken')) return null;           // 商用不動產舊文，不列入專家
+  for(const [k,name] of EXPERT_KEYS) if(s.includes(k)) return name;
+  return null;
+}
+function classifyRole(url){
+  const u = String(url||'');
+  if(SEO_URLS.has(u)) return 'SEO主打文章';
+  if(u.startsWith('/buildings/')) return '建案頁';
+  if(expertOf(u)) return '專家專欄';
+  if(u.startsWith('/life-proposal')) return '生活提案一般';
+  return '其他';
 }
 
 function buildClassificationMap(raw){
@@ -223,7 +209,9 @@ function buildClassificationMap(raw){
     const big = cleanStr(row['大分類']);
     const mid = cleanStr(row['中分類']) === '遺產與贈與稅' ? '遺產與贈與' : cleanStr(row['中分類']);
     const title = cleanStr(row['標題']);
-    if(big) map[url] = { big, mid, title };
+    const publish = cleanStr(row['上刊時間']) || null;
+    const topic = cleanStr(row['生活提案']);
+    if(big || title) map[url] = { big, mid, title, publish, topic };
   });
   return map;
 }
@@ -245,15 +233,13 @@ function aggTraffic(months){
 }
 function trafficMonthlySeries(months){
   return months.map(m=>{
-    const tr = DATA.traffic[m];
-    if(!tr) return {month:m, total:null, organic:null, organicByCat:{}, hasData:false};
-    let total=0, organic=0; const organicByCat={};
-    tr.data.forEach(row=>{
+    const tr = DATA.traffic[m]; let total=0, organic=0; const organicByCat={};
+    if(tr) tr.data.forEach(row=>{
       const u=toNum(row['所有使用者']); total+=u;
       const chan = classifyChannel(row['來源/媒介']);
       if(chan==='Organic Search'){ organic+=u; const cat=classifyPage(row['網頁路徑'],row['網頁標題']); organicByCat[cat]=(organicByCat[cat]||0)+u; }
     });
-    return {month:m, total, organic, organicByCat, hasData:true};
+    return {month:m, total, organic, organicByCat};
   });
 }
 function aggKeywords(months){
@@ -278,11 +264,9 @@ function aggKeywords(months){
 }
 function keywordMonthlySeries(months){
   return months.map(m=>{
-    const kw = DATA.kw[m];
-    if(!kw) return {month:m, total:null, hasData:false};
-    let total=0;
-    kw.data.forEach(r=>{ total += toNum(r['Google自然搜尋點擊次數']); });
-    return {month:m, total, hasData:true};
+    const kw = DATA.kw[m]; let total=0;
+    if(kw) kw.data.forEach(r=>{ total += toNum(r['Google自然搜尋點擊次數']); });
+    return {month:m, total};
   });
 }
 function aggSEO(months){
@@ -304,11 +288,9 @@ function aggSEO(months){
 }
 function seoMonthlySeries(months){
   return months.map(m=>{
-    const seo = DATA.seo[m];
-    if(!seo) return {month:m, total:null, hasData:false};
-    let total=0;
-    seo.data.forEach(r=>{ total += toNum(r['Google自然搜尋點擊次數']); });
-    return {month:m, total, hasData:true};
+    const seo = DATA.seo[m]; let total=0;
+    if(seo) seo.data.forEach(r=>{ total += toNum(r['Google自然搜尋點擊次數']); });
+    return {month:m, total};
   });
 }
 function aggConversion(months){
@@ -328,11 +310,9 @@ function aggConversion(months){
 }
 function conversionMonthlySeries(months){
   return months.map(m=>{
-    const pv = DATA.pageview[m];
-    if(!pv) return {month:m, cvr:null, hasData:false};
-    let users=0, appts=0;
-    pv.data.forEach(r=>{ users+=toNum(r['所有使用者']); appts+=toNum(r['點擊預約賞屋']); });
-    return {month:m, cvr: users? appts/users*100 : 0, hasData:true};
+    const pv = DATA.pageview[m]; let users=0, appts=0;
+    if(pv) pv.data.forEach(r=>{ users+=toNum(r['所有使用者']); appts+=toNum(r['點擊預約賞屋']); });
+    return {month:m, cvr: users? appts/users*100 : 0};
   });
 }
 
@@ -360,7 +340,7 @@ function renderOverview(mA, mB){
       <div class="stat-chip"><div class="n">${fmt(kwA.totalClicks)}</div><div class="l">Google搜尋點擊總數</div></div>
       <div class="stat-chip"><div class="n">${fmt(aioImpr)}</div><div class="l">AI摘要曝光總次數</div></div>
     </div>
-    <div class="card" style="margin-bottom:18px;"><h3>全站流量長期趨勢</h3><div class="cap">${ALL_MONTHS[0]} ~ ${ALL_MONTHS[ALL_MONTHS.length-1]}，不受上方檢視月份篩選影響${missingMonthsNote(trendSeries)}</div>${chartBox('ovTrend',240)}</div>
+    <div class="card" style="margin-bottom:18px;"><h3>全站流量長期趨勢</h3><div class="cap">${ALL_MONTHS[0]} ~ ${ALL_MONTHS[ALL_MONTHS.length-1]}，不受上方檢視月份篩選影響</div>${chartBox('ovTrend',240)}</div>
     ${compareBlock}
     <div class="grid2">
       <div class="card"><h3>頁面類別佔比（全通路，當期）</h3>${chartBox('ovDonut1',200)}</div>
@@ -368,9 +348,9 @@ function renderOverview(mA, mB){
     </div>
   `;
   safeChart('ovTrend', { type:'line', data:{ labels: trendSeries.map(s=>monthLabel(s.month)), datasets:[
-    {label:'全站使用者', data:trendSeries.map(s=>s.total), borderColor:SLATE, backgroundColor:SLATE, tension:.3, spanGaps:false},
-    {label:'自然搜尋使用者', data:trendSeries.map(s=>s.organic), borderColor:TEAL, backgroundColor:TEAL, tension:.3, spanGaps:false},
-    {label:'Google搜尋點擊', data:kwTrendSeries.map(s=>s.total), borderColor:GOLD, backgroundColor:GOLD, tension:.3, yAxisID:'y1', borderDash:[4,3], spanGaps:false}
+    {label:'全站使用者', data:trendSeries.map(s=>s.total), borderColor:SLATE, backgroundColor:SLATE, tension:.3},
+    {label:'自然搜尋使用者', data:trendSeries.map(s=>s.organic), borderColor:TEAL, backgroundColor:TEAL, tension:.3},
+    {label:'Google搜尋點擊', data:kwTrendSeries.map(s=>s.total), borderColor:GOLD, backgroundColor:GOLD, tension:.3, yAxisID:'y1', borderDash:[4,3]}
   ]}, options:{ plugins:{legend:{position:'bottom'}}, scales:{ y:{title:{display:true,text:'使用者數'}}, y1:{position:'right', title:{display:true,text:'搜尋點擊'}, grid:{drawOnChartArea:false}} } } });
   const cats = Object.keys(A.catTotals);
   safeChart('ovDonut1', { type:'doughnut', data:{labels:cats, datasets:[{data:cats.map(c=>A.catTotals[c]), backgroundColor:cats.map(c=>CAT_COLORS[c]||STONE)}]}, options:{plugins:{legend:{position:'bottom',labels:{boxWidth:9,font:{size:10}}}}, cutout:'58%'} });
@@ -391,10 +371,9 @@ function renderTraffic(mA, mB){
   if(!mA.length){ renderEmpty('traffic','流量與來源','此期間尚無資料',['data/traffic-source/YYYY-MM.csv']); return; }
   const A = aggTraffic(mA);
   const fullSeries = trafficMonthlySeries(ALL_MONTHS);
-  const organicShareSeries = fullSeries.map(s=>({month:s.month, share: s.hasData ? (s.total? s.organic/s.total*100 : 0) : null}));
-  const organicCatSeries = fullSeries.map(s=>s.hasData ? s.organicByCat : null);
+  const organicShareSeries = fullSeries.map(s=>({month:s.month, share: s.total? s.organic/s.total*100 : 0}));
+  const organicCatSeries = fullSeries.map(s=>s.organicByCat);
   const cats = Object.keys(CAT_COLORS);
-  const missingNote = missingMonthsNote(fullSeries);
 
   const rows = Object.keys(A.chanTotals).map(c=>({name:c, users:A.chanTotals[c], share:A.chanTotals[c]/A.total*100})).sort((a,b)=>b.users-a.users);
 
@@ -405,17 +384,17 @@ function renderTraffic(mA, mB){
       <div class="stat-chip"><div class="n">${A.total? (A.chanTotals['Organic Search']||0)/A.total*100 : 0 | 0}%</div><div class="l">自然搜尋佔全站比例</div></div>
       <div class="stat-chip"><div class="n">${fmt(A.total)}</div><div class="l">全站使用者（對照用）</div></div>
     </div>
-    <div class="card" style="margin-bottom:18px;"><h3>自然搜尋佔比長期趨勢</h3><div class="cap">${ALL_MONTHS[0]} ~ ${ALL_MONTHS[ALL_MONTHS.length-1]}，自然搜尋使用者佔全站比例${missingNote}</div>${chartBox('organicShareTrend',220)}</div>
-    <div class="card" style="margin-bottom:18px;"><h3>自然搜尋流量：依頁面類別逐月趨勢</h3><div class="cap">哪類內容承接自然搜尋流量、趨勢如何${missingNote}</div>${chartBox('organicCatTrend',240)}</div>
+    <div class="card" style="margin-bottom:18px;"><h3>自然搜尋佔比長期趨勢</h3><div class="cap">${ALL_MONTHS[0]} ~ ${ALL_MONTHS[ALL_MONTHS.length-1]}，自然搜尋使用者佔全站比例</div>${chartBox('organicShareTrend',220)}</div>
+    <div class="card" style="margin-bottom:18px;"><h3>自然搜尋流量：依頁面類別逐月趨勢</h3><div class="cap">哪類內容承接自然搜尋流量、趨勢如何</div>${chartBox('organicCatTrend',240)}</div>
     <h3 class="section-label">對照：全通路管道組成（當期）</h3>
     <div class="grid2">
       <div class="card"><h3>流量管道佔比</h3>${chartBox('trChart',200)}</div>
-      <div class="card"><h3>各管道使用者數</h3><table class="sortable"><thead><tr><th>管道</th><th class="num">使用者數</th><th class="num">佔比</th></tr></thead>
-      <tbody>${rows.map(r=>`<tr><td>${r.name}</td><td class="num" data-sort-key="${r.users}">${fmt(r.users)}</td><td class="num" data-sort-key="${r.share}">${r.share.toFixed(1)}%</td></tr>`).join('')}</tbody></table></div>
+      <div class="card"><h3>各管道使用者數</h3><table><thead><tr><th>管道</th><th class="num">使用者數</th><th class="num">佔比</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr><td>${r.name}</td><td class="num">${fmt(r.users)}</td><td class="num">${r.share.toFixed(1)}%</td></tr>`).join('')}</tbody></table></div>
     </div>
   `;
-  safeChart('organicShareTrend', { type:'line', data:{ labels: fullSeries.map(s=>monthLabel(s.month)), datasets:[{label:'自然搜尋佔比(%)', data: organicShareSeries.map(s=>s.share), borderColor:TEAL, backgroundColor:TEAL, tension:.3, spanGaps:false}] }, options:{plugins:{legend:{display:false}}} });
-  safeChart('organicCatTrend', { type:'line', data:{ labels: fullSeries.map(s=>monthLabel(s.month)), datasets: cats.map(c=>({label:c, data: organicCatSeries.map(o=>o?(o[c]||0):null), borderColor:CAT_COLORS[c], backgroundColor:CAT_COLORS[c], tension:.3, spanGaps:false})) }, options:{plugins:{legend:{position:'bottom'}}} });
+  safeChart('organicShareTrend', { type:'line', data:{ labels: fullSeries.map(s=>monthLabel(s.month)), datasets:[{label:'自然搜尋佔比(%)', data: organicShareSeries.map(s=>s.share), borderColor:TEAL, backgroundColor:TEAL, tension:.3}] }, options:{plugins:{legend:{display:false}}} });
+  safeChart('organicCatTrend', { type:'line', data:{ labels: fullSeries.map(s=>monthLabel(s.month)), datasets: cats.map(c=>({label:c, data: organicCatSeries.map(o=>o[c]||0), borderColor:CAT_COLORS[c], backgroundColor:CAT_COLORS[c], tension:.3})) }, options:{plugins:{legend:{position:'bottom'}}} });
   safeChart('trChart', { type:'bar', data:{labels:rows.map(r=>r.name), datasets:[{label:'使用者數', data:rows.map(r=>r.users), backgroundColor:rows.map(r=>CHAN_COLORS[r.name]||STONE)}]}, options:{plugins:{legend:{display:false}}, indexAxis:'y'} });
 }
 
@@ -428,10 +407,22 @@ function renderKeywords(mA, mB){
   const top15 = A.rows.slice().sort((a,b)=>b.clicks-a.clicks).slice(0,15);
   const series = keywordMonthlySeries(ALL_MONTHS);
 
-  // 分析①：漲跌幅比較（跟上一個等長期間比，門檻可自行調整）
+  // 分析①：漲跌幅比較（跟上一個等長期間比）
   const prevMonths = previousPeriodMonths(mA);
   const prevA = prevMonths.length ? aggKeywords(prevMonths) : null;
-  const curLabel = periodLabel(mA), prevLabel = periodLabel(prevMonths);
+  let moversHtml = '<p class="cap">尚無足夠歷史資料可比較</p>';
+  if(prevA){
+    const prevMap = {}; prevA.rows.forEach(r=>prevMap[r.keyword]=r.clicks);
+    const movers = A.rows.map(r=>({keyword:r.keyword, now:r.clicks, prev:prevMap[r.keyword]||0, delta:r.clicks-(prevMap[r.keyword]||0)})).filter(r=>r.now>=5||r.prev>=5);
+    const rising = movers.slice().sort((a,b)=>b.delta-a.delta).slice(0,8);
+    const falling = movers.slice().sort((a,b)=>a.delta-b.delta).slice(0,8);
+    moversHtml = `<div class="grid2">
+      <div><h4 class="mini-h">📈 上升最多</h4><table><thead><tr><th>關鍵字</th><th class="num">前期→本期</th><th class="num">變化</th></tr></thead>
+      <tbody>${rising.map(r=>`<tr><td>${r.keyword}</td><td class="num">${fmt(r.prev)}→${fmt(r.now)}</td><td class="num" style="color:${TEAL}">+${fmt(r.delta)}</td></tr>`).join('')}</tbody></table></div>
+      <div><h4 class="mini-h">📉 下滑最多</h4><table><thead><tr><th>關鍵字</th><th class="num">前期→本期</th><th class="num">變化</th></tr></thead>
+      <tbody>${falling.map(r=>`<tr><td>${r.keyword}</td><td class="num">${fmt(r.prev)}→${fmt(r.now)}</td><td class="num" style="color:${RUST}">${fmt(r.delta)}</td></tr>`).join('')}</tbody></table></div>
+    </div>`;
+  }
 
   // 分析②：高曝光低點閱率機會字（排名不錯但沒人點，標題/摘要可能要優化）
   const avgCtr = A.rows.reduce((s,r)=>s+r.ctr,0)/Math.max(1,A.rows.length);
@@ -439,13 +430,9 @@ function renderKeywords(mA, mB){
 
   p.innerHTML = `
     ${panelHead('進站意圖：關鍵字', '了解大家用什麼字搜尋進站，並找出上升/下滑趨勢與優化機會', 'Google Search Console')}
-    <div class="card" style="margin-bottom:18px;"><h3>逐月點擊趨勢</h3><div class="cap">${ALL_MONTHS[0]} ~ ${ALL_MONTHS[ALL_MONTHS.length-1]}${missingMonthsNote(series)}</div>${chartBox('kwTrend',200)}</div>
-    <h3 class="section-label">分析①：${prevLabel} vs ${curLabel}，誰漲誰跌</h3>
-    <div class="card" style="margin-bottom:18px;">
-      <div class="threshold-ctrl">顯著變化門檻：漲跌幅超過 <input type="number" id="kwThreshold" value="30" min="1" max="500"> % <button id="kwThresholdBtn">套用</button>
-      <span style="margin-left:8px;">（比較基準：${prevMonths.length?prevMonths.join('~'):'無足夠歷史'} vs ${mA.join('~')}）</span></div>
-      <div id="kwMoversArea"></div>
-    </div>
+    <div class="card" style="margin-bottom:18px;"><h3>逐月點擊趨勢</h3><div class="cap">${ALL_MONTHS[0]} ~ ${ALL_MONTHS[ALL_MONTHS.length-1]}</div>${chartBox('kwTrend',200)}</div>
+    <h3 class="section-label">分析①：本期 vs 上一期，誰漲誰跌</h3>
+    <div class="card" style="margin-bottom:18px;">${moversHtml}</div>
     <h3 class="section-label">分析②：高曝光低點閱率（標題/摘要優化機會）</h3>
     <div class="card" style="margin-bottom:18px;"><div class="cap">曝光≥50次、點閱率低於當期平均60%的關鍵字——代表排名尚可但沒吸引人點擊</div>
     <table><thead><tr><th>關鍵字</th><th class="num">曝光</th><th class="num">點擊</th><th class="num">點閱率</th><th class="num">平均排名</th></tr></thead>
@@ -453,84 +440,46 @@ function renderKeywords(mA, mB){
     <h3 class="section-label">基本盤：搜尋意圖10大類 ＋ TOP15關鍵字</h3>
     <div class="grid2">
       <div class="card"><h3>搜尋意圖10大類佔比</h3>${chartBox('kwDonut',220)}</div>
-      <div class="card"><h3>類別清單</h3><table class="sortable"><thead><tr><th>分類</th><th class="num">點擊</th><th class="num">佔比</th></tr></thead>
-      <tbody>${catArr.map(([c,v])=>`<tr><td>${c}</td><td class="num" data-sort-key="${v}">${fmt(v)}</td><td class="num" data-sort-key="${v/A.totalClicks*100}">${(v/A.totalClicks*100).toFixed(1)}%</td></tr>`).join('')}</tbody></table></div>
+      <div class="card"><h3>類別清單</h3><table><thead><tr><th>分類</th><th class="num">點擊</th><th class="num">佔比</th></tr></thead>
+      <tbody>${catArr.map(([c,v])=>`<tr><td>${c}</td><td class="num">${fmt(v)}</td><td class="num">${(v/A.totalClicks*100).toFixed(1)}%</td></tr>`).join('')}</tbody></table></div>
     </div>
-    <div class="card"><h3>搜尋量前15名關鍵字</h3><table class="sortable"><thead><tr><th>關鍵字</th><th class="num">點擊</th><th class="num">曝光</th><th class="num">點閱率</th><th class="num">平均排名</th></tr></thead>
-    <tbody>${top15.map(r=>`<tr><td>${r.keyword}</td><td class="num" data-sort-key="${r.clicks}">${fmt(r.clicks)}</td><td class="num" data-sort-key="${r.impressions}">${fmt(r.impressions)}</td><td class="num" data-sort-key="${r.ctr}">${(r.ctr*100).toFixed(1)}%</td><td class="num" data-sort-key="${r.position}">${r.position.toFixed(1)}</td></tr>`).join('')}</tbody></table></div>
+    <div class="card"><h3>搜尋量前15名關鍵字</h3><table><thead><tr><th>關鍵字</th><th class="num">點擊</th><th class="num">曝光</th><th class="num">點閱率</th><th class="num">平均排名</th></tr></thead>
+    <tbody>${top15.map(r=>`<tr><td>${r.keyword}</td><td class="num">${fmt(r.clicks)}</td><td class="num">${fmt(r.impressions)}</td><td class="num">${(r.ctr*100).toFixed(1)}%</td><td class="num">${r.position.toFixed(1)}</td></tr>`).join('')}</tbody></table></div>
   `;
-  safeChart('kwTrend', { type:'line', data:{labels:series.map(s=>monthLabel(s.month)), datasets:[{label:'點擊', data:series.map(s=>s.total), borderColor:TEAL, backgroundColor:TEAL, tension:.3, spanGaps:false}]}, options:{plugins:{legend:{display:false}}} });
-  renderKwMovers(A, prevA);
-  document.getElementById('kwThresholdBtn').addEventListener('click', ()=>renderKwMovers(A, prevA));
+  safeChart('kwTrend', { type:'line', data:{labels:series.map(s=>monthLabel(s.month)), datasets:[{label:'點擊', data:series.map(s=>s.total), borderColor:TEAL, backgroundColor:TEAL, tension:.3}]}, options:{plugins:{legend:{display:false}}} });
   const palette=[RUST,TEAL,GOLD,SLATE,PLUM,MOSS,SAND,STONE,"#4A5568","#BFAF9B"];
   safeChart('kwDonut', { type:'doughnut', data:{labels:catArr.map(c=>c[0]), datasets:[{data:catArr.map(c=>c[1]), backgroundColor:palette}]}, options:{plugins:{legend:{position:'bottom',labels:{boxWidth:9,font:{size:9.5}}}}, cutout:'55%'} });
 }
 
-function renderKwMovers(A, prevA){
-  const area = document.getElementById('kwMoversArea');
-  if(!area) return;
-  const threshold = Math.max(1, toNum(document.getElementById('kwThreshold').value) || 30);
-  if(!prevA){ area.innerHTML = '<p class="cap">尚無足夠歷史資料可比較</p>'; return; }
-  const prevMap = {}; prevA.rows.forEach(r=>prevMap[r.keyword]=r.clicks);
-  const movers = A.rows.map(r=>{
-    const prev = prevMap[r.keyword]||0;
-    const pctChange = prev>0 ? (r.clicks-prev)/prev*100 : (r.clicks>0? Infinity : 0);
-    return {keyword:r.keyword, now:r.clicks, prev, delta:r.clicks-prev, pctChange};
-  }).filter(r=>r.now>=5||r.prev>=5);
-  const rising = movers.filter(r=>r.pctChange>=threshold || (r.prev===0 && r.now>=5)).sort((a,b)=>b.delta-a.delta).slice(0,10);
-  const falling = movers.filter(r=>r.pctChange<=-threshold).sort((a,b)=>a.delta-b.delta).slice(0,10);
-  area.innerHTML = `<div class="grid2-equal">
-    <div><h4 class="mini-h">📈 上升超過${threshold}%（共${rising.length}個）</h4><table><thead><tr><th>關鍵字</th><th class="num">前期→本期</th><th class="num">變化</th></tr></thead>
-    <tbody>${rising.map(r=>`<tr><td>${r.keyword}</td><td class="num">${fmt(r.prev)}→${fmt(r.now)}</td><td class="num" style="color:${TEAL}">${r.prev===0?'新進':pct(r.pctChange)}</td></tr>`).join('') || '<tr><td colspan="3">無符合條件的關鍵字</td></tr>'}</tbody></table></div>
-    <div><h4 class="mini-h">📉 下滑超過${threshold}%（共${falling.length}個）</h4><table><thead><tr><th>關鍵字</th><th class="num">前期→本期</th><th class="num">變化</th></tr></thead>
-    <tbody>${falling.map(r=>`<tr><td>${r.keyword}</td><td class="num">${fmt(r.prev)}→${fmt(r.now)}</td><td class="num" style="color:${RUST}">${pct(r.pctChange)}</td></tr>`).join('') || '<tr><td colspan="3">無符合條件的關鍵字</td></tr>'}</tbody></table></div>
-  </div>`;
-}
-
 /* ============ ④ 內容成效：文章與分類（原④+④b合併） ============ */
-function renderSeoMovers(nonbuild, prevMap){
-  const area = document.getElementById('seoMoversArea');
-  if(!area) return;
-  const threshold = Math.max(1, toNum(document.getElementById('seoThreshold').value) || 30);
-  const movers = nonbuild.map(r=>{
-    const prev = prevMap[r.url]||0;
-    const pctChange = prev>0 ? (r.clicks-prev)/prev*100 : (r.clicks>0? Infinity : 0);
-    return {url:r.url, now:r.clicks, prev, delta:r.clicks-prev, pctChange};
-  }).filter(r=>r.now>=5||r.prev>=5);
-  const rising = movers.filter(r=>r.pctChange>=threshold || (r.prev===0 && r.now>=5)).sort((a,b)=>b.delta-a.delta).slice(0,10);
-  const falling = movers.filter(r=>r.pctChange<=-threshold).sort((a,b)=>a.delta-b.delta).slice(0,10);
-  area.innerHTML = `<div class="grid2-equal">
-    <div><h4 class="mini-h">📈 上升超過${threshold}%（共${rising.length}篇）</h4><table><thead><tr><th>文章</th><th class="num">前期→本期</th><th class="num">變化</th></tr></thead>
-    <tbody>${rising.map(r=>`<tr><td>${articleLink(r.url)}</td><td class="num">${fmt(r.prev)}→${fmt(r.now)}</td><td class="num" style="color:${TEAL}">${r.prev===0?'新進':pct(r.pctChange)}</td></tr>`).join('') || '<tr><td colspan="3">無符合條件的文章</td></tr>'}</tbody></table></div>
-    <div><h4 class="mini-h">📉 下滑超過${threshold}%（共${falling.length}篇）</h4><table><thead><tr><th>文章</th><th class="num">前期→本期</th><th class="num">變化</th></tr></thead>
-    <tbody>${falling.map(r=>`<tr><td>${articleLink(r.url)}</td><td class="num">${fmt(r.prev)}→${fmt(r.now)}</td><td class="num" style="color:${RUST}">${pct(r.pctChange)}</td></tr>`).join('') || '<tr><td colspan="3">無符合條件的文章</td></tr>'}</tbody></table></div>
-  </div>`;
-}
 function renderSEO(mA, mB){
   const p = document.getElementById('panel-seo');
   if(!mA.length){ renderEmpty('seo','內容成效：文章與分類','此期間尚無資料',['data/gsc-page/YYYY-MM.csv']); return; }
   const rows = aggSEO(mA);
   const nonbuild = rows.filter(r=>r.cat!=='建案頁');
+  const top20 = nonbuild.slice().sort((a,b)=>b.clicks-a.clicks).slice(0,20);
+  const top20Sum = top20.reduce((s,r)=>s+r.clicks,0);
   const nbTotal = nonbuild.reduce((s,r)=>s+r.clicks,0);
   const grandTotal = rows.reduce((s,r)=>s+r.clicks,0);
-  const series = seoMonthlySeries(ALL_MONTHS);
-
-  // 依頁面五大分類（URL規則）拆解：生活提案(其他)／專家觀點／在地生活／其他頁面
-  const contentCats = ['生活提案(其他)','專家觀點','在地生活','其他頁面'];
-  const catBreakdown = contentCats.map(cat=>{
-    const catRows = nonbuild.filter(r=>r.cat===cat);
-    const total = catRows.reduce((s,r)=>s+r.clicks,0);
-    const impr = catRows.reduce((s,r)=>s+r.impressions,0);
-    const top5 = catRows.slice().sort((a,b)=>b.clicks-a.clicks).slice(0,5);
-    return {cat, total, impr, count:catRows.length, top5};
-  }).sort((a,b)=>b.total-a.total);
-
-  // 官方大分類/中分類（分類表）貢獻度 + 展開結構
   let bigTotals={}, coveredClicks=0;
   nonbuild.forEach(r=>{ const c = CLS_MAP[r.url]; if(c && c.big){ bigTotals[c.big]=(bigTotals[c.big]||0)+r.clicks; coveredClicks += r.clicks; } });
   const bigArr = Object.entries(bigTotals).sort((a,b)=>b[1]-a[1]);
   const coverage = nbTotal ? (coveredClicks/nbTotal*100) : 0;
+  const series = seoMonthlySeries(ALL_MONTHS);
 
+  // 分析①：本期 vs 上一期 文章漲跌
+  const prevMonths = previousPeriodMonths(mA);
+  const prevRows = prevMonths.length ? aggSEO(prevMonths) : [];
+  const prevMap = {}; prevRows.forEach(r=>prevMap[r.url]=r.clicks);
+  const movers = nonbuild.map(r=>({url:r.url, now:r.clicks, prev:prevMap[r.url]||0, delta:r.clicks-(prevMap[r.url]||0)})).filter(r=>r.now>=5||r.prev>=5);
+  const rising = movers.slice().sort((a,b)=>b.delta-a.delta).slice(0,6);
+  const falling = movers.slice().sort((a,b)=>a.delta-b.delta).slice(0,6);
+
+  // 分析②：高曝光低點閱率文章（標題待優化）
+  const avgCtr = nonbuild.reduce((s,r)=>s+r.ctr,0)/Math.max(1,nonbuild.length);
+  const opportunities = nonbuild.filter(r=>r.impressions>=100 && r.ctr < avgCtr*0.6).sort((a,b)=>b.impressions-a.impressions).slice(0,8);
+
+  // 大分類逐月（全歷史）+ 分類結構（供展開）
   const bigMonthly = {}; const structure = {};
   ALL_MONTHS.forEach(m=>{
     const seo = DATA.seo[m]; if(!seo) return;
@@ -549,43 +498,62 @@ function renderSEO(mA, mB){
     });
   });
   const bigCatsAll = Object.keys(bigMonthly);
+
+  // 主題軸（分類表的「生活提案」欄）：每主題的篇數、點擊、每篇平均點擊
+  const topicAgg = {};
+  nonbuild.forEach(r=>{
+    const c = CLS_MAP[r.url]; const t = (c && c.topic) ? c.topic : '（未分類）';
+    const o = topicAgg[t] = topicAgg[t] || {clicks:0, imp:0, n:0};
+    o.clicks += r.clicks; o.imp += r.impressions; o.n += 1;
+  });
+  const topicArr = Object.entries(topicAgg).sort((a,b)=>b[1].clicks-a[1].clicks);
+  const topicTotal = topicArr.reduce((s,[,v])=>s+v.clicks,0) || 1;
   const structTotals = {}; Object.keys(structure).forEach(big=>{ structTotals[big]=Object.values(structure[big]).reduce((s,mid)=>s+Object.values(mid).reduce((s2,a)=>s2+a.clicks,0),0); });
   const bigOrder = Object.keys(structure).sort((a,b)=>structTotals[b]-structTotals[a]);
   const structGrand = Object.values(structTotals).reduce((s,v)=>s+v,0);
 
   p.innerHTML = `
-    ${panelHead('內容成效：文章與分類', '了解進站後大家看什麼文章、哪個內容單元／主題該投入資源（純成效總覽；找問題/漲跌分析請至⑤內容健康監控）', 'Google Search Console ＋ 遠房官網文章對應分類表')}
+    ${panelHead('內容成效：文章與分類', '了解進站後大家看什麼文章、哪個主題該投入，並找出上升/下滑與優化機會', 'Google Search Console ＋ 遠房官網文章對應分類表')}
     <div class="stat-row">
-      <div class="stat-chip"><div class="n">${fmt(nbTotal)}</div><div class="l">非建案內容合計點擊（當期）</div></div>
-      <div class="stat-chip"><div class="n">${grandTotal?(nbTotal/grandTotal*100).toFixed(1):0}%</div><div class="l">佔全站比重</div></div>
+      <div class="stat-chip"><div class="n">${fmt(top20Sum)}</div><div class="l">TOP20頁面合計點擊</div></div>
+      <div class="stat-chip"><div class="n">${nbTotal?(top20Sum/nbTotal*100).toFixed(1):0}%</div><div class="l">佔非建案內容比重</div></div>
+      <div class="stat-chip"><div class="n">${grandTotal?(top20Sum/grandTotal*100).toFixed(1):0}%</div><div class="l">佔全站比重</div></div>
       <div class="stat-chip"><div class="n">${coverage.toFixed(1)}%</div><div class="l">官方分類表收錄率</div></div>
     </div>
-    <div class="card" style="margin-bottom:18px;"><h3>逐月點擊趨勢（不含建案頁）</h3><div class="cap">${ALL_MONTHS[0]} ~ ${ALL_MONTHS[ALL_MONTHS.length-1]}${missingMonthsNote(series)}</div>${chartBox('seoTrend',200)}</div>
+    <div class="card" style="margin-bottom:18px;"><h3>逐月點擊趨勢（不含建案頁）</h3><div class="cap">${ALL_MONTHS[0]} ~ ${ALL_MONTHS[ALL_MONTHS.length-1]}</div>${chartBox('seoTrend',200)}</div>
 
-    <h3 class="section-label">依內容單元拆解：生活提案／專家觀點／在地生活／其他頁面</h3>
-    <div class="card" style="margin-bottom:18px;">
-      <table class="sortable"><thead><tr><th>單元</th><th class="num">點擊</th><th class="num">曝光</th><th class="num">佔比</th><th class="num">文章數</th></tr></thead>
-      <tbody>${catBreakdown.map(c=>`<tr><td>${c.cat}</td><td class="num" data-sort-key="${c.total}">${fmt(c.total)}</td><td class="num" data-sort-key="${c.impr}">${fmt(c.impr)}</td><td class="num" data-sort-key="${nbTotal?c.total/nbTotal*100:0}">${nbTotal?(c.total/nbTotal*100).toFixed(1):0}%</td><td class="num" data-sort-key="${c.count}">${c.count}</td></tr>`).join('')}</tbody></table>
-    </div>
-    <div class="grid3">
-      ${catBreakdown.map(c=>`<div class="card"><h3>${c.cat}：TOP5</h3>
-        <table><thead><tr><th>文章</th><th class="num">點擊</th></tr></thead>
-        <tbody>${c.top5.map(a=>`<tr><td>${articleLink(a.url)}</td><td class="num">${fmt(a.clicks)}</td></tr>`).join('') || '<tr><td colspan="2">此期間無資料</td></tr>'}</tbody></table>
-      </div>`).join('')}
-    </div>
+    <h3 class="section-label">分析①：本期 vs 上一期，哪些文章漲跌最多</h3>
+    <div class="card" style="margin-bottom:18px;"><div class="grid2">
+      <div><h4 class="mini-h">📈 上升最多</h4><table><thead><tr><th>文章</th><th class="num">前期→本期</th><th class="num">變化</th></tr></thead>
+      <tbody>${rising.map(r=>`<tr><td>${articleLink(r.url)}</td><td class="num">${fmt(r.prev)}→${fmt(r.now)}</td><td class="num" style="color:${TEAL}">+${fmt(r.delta)}</td></tr>`).join('') || '<tr><td colspan="3">尚無足夠資料比較</td></tr>'}</tbody></table></div>
+      <div><h4 class="mini-h">📉 下滑最多</h4><table><thead><tr><th>文章</th><th class="num">前期→本期</th><th class="num">變化</th></tr></thead>
+      <tbody>${falling.map(r=>`<tr><td>${articleLink(r.url)}</td><td class="num">${fmt(r.prev)}→${fmt(r.now)}</td><td class="num" style="color:${RUST}">${fmt(r.delta)}</td></tr>`).join('') || '<tr><td colspan="3">尚無足夠資料比較</td></tr>'}</tbody></table></div>
+    </div></div>
 
-    <h3 class="section-label">官方分類貢獻度（大分類）</h3>
+    <h3 class="section-label">分析②：高曝光低點閱率（標題待優化）</h3>
+    <div class="card" style="margin-bottom:18px;"><div class="cap">曝光≥100次、點閱率低於當期平均60%——排名不錯但標題不吸引人點擊</div>
+    <table><thead><tr><th>文章</th><th class="num">曝光</th><th class="num">點擊</th><th class="num">點閱率</th><th class="num">排名</th></tr></thead>
+    <tbody>${opportunities.map(r=>`<tr><td>${articleLink(r.url)}</td><td class="num">${fmt(r.impressions)}</td><td class="num">${fmt(r.clicks)}</td><td class="num" style="color:${GOLD}">${(r.ctr*100).toFixed(2)}%</td><td class="num">${r.position.toFixed(1)}</td></tr>`).join('') || '<tr><td colspan="5">此期間無明顯機會文章</td></tr>'}</tbody></table></div>
+
+    <h3 class="section-label">基本盤：TOP20文章 ＋ 官方分類貢獻度</h3>
     <div class="grid2">
       <div class="card"><h3>官方大分類佔比（當期）</h3>${chartBox('seoBigDonut',220)}</div>
-      <div class="card"><h3>大分類清單</h3><table class="sortable"><thead><tr><th>大分類</th><th class="num">點擊</th><th class="num">佔比</th></tr></thead>
-      <tbody>${bigArr.map(([c,v])=>`<tr><td>${c}</td><td class="num" data-sort-key="${v}">${fmt(v)}</td><td class="num" data-sort-key="${coveredClicks?v/coveredClicks*100:0}">${coveredClicks?(v/coveredClicks*100).toFixed(1):0}%</td></tr>`).join('')}</tbody></table></div>
+      <div class="card"><h3>TOP20文章（點標題開新視窗）</h3><table><thead><tr><th>#</th><th>文章</th><th class="num">點擊</th><th class="num">排名</th><th class="num">點閱率</th></tr></thead>
+      <tbody>${top20.slice(0,12).map((a,i)=>`<tr><td>${i+1}</td><td>${articleLink(a.url)}</td><td class="num">${fmt(a.clicks)}</td><td class="num">${a.position.toFixed(1)}</td><td class="num">${(a.ctr*100).toFixed(1)}%</td></tr>`).join('')}</tbody></table></div>
+    </div>
+
+    <h3 class="section-label">主題軸：哪一類主題最會帶流量</h3>
+    <div class="card" style="margin-bottom:18px;">
+      <div class="cap">依分類表「生活提案」欄彙總。<b>每篇平均點擊</b>比總點擊更能看出效率——篇數少但平均高的主題，值得加碼選題。</div>
+      <table><thead><tr><th>主題</th><th class="num">篇數</th><th class="num">點擊</th><th class="num">佔比</th><th class="num">曝光</th><th class="num">每篇平均點擊</th></tr></thead>
+      <tbody>${topicArr.map(([t,v])=>`<tr><td>${t}</td><td class="num">${fmt(v.n)}</td><td class="num">${fmt(v.clicks)}</td><td class="num">${(v.clicks/topicTotal*100).toFixed(1)}%</td><td class="num">${fmt(v.imp)}</td><td class="num"><b>${(v.clicks/Math.max(1,v.n)).toFixed(0)}</b></td></tr>`).join('') || '<tr><td colspan="6">此期間無分類資料</td></tr>'}</tbody></table>
     </div>
 
     <h3 class="section-label">大分類逐月趨勢 ＋ 展開至中分類／文章</h3>
     <div class="card" style="margin-bottom:18px;"><div class="cap">${ALL_MONTHS[0]} ~ ${ALL_MONTHS[ALL_MONTHS.length-1]}，長期趨勢不受檢視月份篩選影響</div>${chartBox('bigTrendChart',260)}</div>
     <div class="card"><h3>點大分類展開中分類，再點中分類展開文章（依當期資料）</h3><div id="drilldown"></div></div>
   `;
-  safeChart('seoTrend', { type:'line', data:{ labels:series.map(s=>monthLabel(s.month)), datasets:[{label:'點擊', data:series.map(s=>s.total), borderColor:TEAL, backgroundColor:TEAL, tension:.3, spanGaps:false}] }, options:{plugins:{legend:{display:false}}} });
+  safeChart('seoTrend', { type:'line', data:{ labels:series.map(s=>monthLabel(s.month)), datasets:[{label:'點擊', data:series.map(s=>s.total), borderColor:TEAL, backgroundColor:TEAL, tension:.3}] }, options:{plugins:{legend:{display:false}}} });
   safeChart('seoBigDonut', { type:'doughnut', data:{labels:bigArr.map(c=>c[0]), datasets:[{data:bigArr.map(c=>c[1]), backgroundColor:[TEAL,SLATE,GOLD,PLUM,MOSS,SAND,STONE]}]}, options:{plugins:{legend:{position:'bottom',labels:{boxWidth:9,font:{size:10}}}}, cutout:'55%'} });
   safeChart('bigTrendChart', { type:'line', data:{ labels: ALL_MONTHS.map(monthLabel), datasets: bigCatsAll.sort((a,b)=>Object.values(bigMonthly[b]).reduce((s,v)=>s+v,0)-Object.values(bigMonthly[a]).reduce((s,v)=>s+v,0)).map(c=>({label:c, data: ALL_MONTHS.map(m=>bigMonthly[c][m]||0), borderColor:BIG_COLORS[c]||STONE, backgroundColor:BIG_COLORS[c]||STONE, tension:.3})) },
     options:{ plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:10}}}} } });
@@ -621,11 +589,10 @@ function renderSEO(mA, mB){
             midRow.querySelector('.tree-toggle').textContent = artOpen ? '▸' : '▾';
             if(!artOpen && !artContainer.dataset.built){
               const articles = Object.entries(structure[big][mid]).map(([url,d])=>({url, ...d})).sort((a,b)=>b.clicks-a.clicks);
-              artContainer.innerHTML = `<table class="sortable"><thead><tr><th>文章</th><th class="num">點擊</th></tr></thead><tbody>
-                ${articles.map(a=>`<tr><td>${articleLink(a.url)}</td><td class="num" data-sort-key="${a.clicks}">${fmt(a.clicks)}</td></tr>`).join('')}
+              artContainer.innerHTML = `<table><thead><tr><th>文章</th><th class="num">點擊</th></tr></thead><tbody>
+                ${articles.map(a=>`<tr><td>${articleLink(a.url)}</td><td class="num">${fmt(a.clicks)}</td></tr>`).join('')}
               </tbody></table>`;
               artContainer.dataset.built = '1';
-              makeSortable(artContainer.querySelector('table'));
             }
           });
         });
@@ -633,143 +600,217 @@ function renderSEO(mA, mB){
     });
   });
 }
+function cssId(s){ return String(s).replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g,'_'); }
 
-
-/* ============ ⑤ 內容健康監控 ============ */
-function renderMonitor(mA){
+/* ============ ⑤ 內容健康監控（三道閘門 × 四級判定 × 區間參數化） ============ */
+function renderMonitor(){
   const p = document.getElementById('panel-monitor');
-  const months = sortedMonths(DATA.seo);
-  if(months.length < 2){ renderEmpty('monitor','哪些文章需要優先改版','至少需要2個月資料才能計算趨勢',['data/gsc-page/YYYY-MM.csv（多個月份）']); return; }
-  const seriesMap = {};
+  const months = ALL_MONTHS.filter(m => DATA.seo[m]);
+  if(months.length < 2){ renderEmpty('monitor','內容健康監控','至少需要2個月資料才能計算趨勢',['gsc_page 分頁（多個月份）']); return; }
+
+  /* --- 門檻：優先讀 config 分頁，讀不到用預設 --- */
+  const C = (typeof CONFIG === 'object' && CONFIG) ? CONFIG : {};
+  const num = (k, d) => { const v = parseFloat(C[k]); return isNaN(v) ? d : v; };
+  let TH = {
+    clickDrop: num('點擊跌幅門檻%', 20),      // 點擊較比較期下滑超過此值
+    posWorsen: num('排名退步門檻', 3),         // 平均排名退步超過此名次
+    minImp:    num('最低曝光門檻_月', 300),     // 當期月均曝光低於此值不判定
+    ctrAchieve:num('CTR達成率門檻%', 70),      // 實際CTR ÷ 該排名期望CTR
+    exemptDays:num('新頁豁免天數', 90),
+    peakDrop:  num('距高峰跌幅門檻%', 40)
+  };
+
+  /* --- 建立 url × month 的序列 --- */
+  const S = {};
   months.forEach(m=>{
-    const seo = DATA.seo[m];
-    seo.data.forEach(r=>{
+    DATA.seo[m].data.forEach(r=>{
       const url = normUrl(r['到達網頁'] || Object.values(r)[0]);
-      if(classifyPage(url)==='建案頁') return;
-      seriesMap[url] = seriesMap[url] || { clicks:{}, position:{}, ctr:{} };
-      seriesMap[url].clicks[m] = toNum(r['Google自然搜尋點擊次數']);
-      seriesMap[url].position[m] = toNum(r['Google自然搜尋平均排名']);
-      seriesMap[url].ctr[m] = toNum(r['Google自然搜尋點擊率'])*100;
+      if(!url || classifyPage(url)==='建案頁') return;
+      (S[url] = S[url] || {c:{},i:{},t:{},p:{}});
+      S[url].c[m] = toNum(r['Google自然搜尋點擊次數']);
+      S[url].i[m] = toNum(r['Google自然搜尋曝光次數'] || r['Google自然搜尋曝光數']);
+      S[url].t[m] = toNum(r['Google自然搜尋點擊率']);
+      S[url].p[m] = toNum(r['Google自然搜尋平均排名']);
     });
   });
-  const latest = months[months.length-1];
-  const urls = Object.keys(seriesMap).sort((a,b)=>(seriesMap[b].clicks[latest]||0)-(seriesMap[a].clicks[latest]||0)).slice(0,20);
-  const articles = urls.map(u=>({ url:u, clicks: months.map(m=>seriesMap[u].clicks[m] ?? null), position: months.map(m=>seriesMap[u].position[m] ?? null), ctr: months.map(m=>seriesMap[u].ctr[m] ?? null) }));
 
-  // 移入的分析：本期vs上一期漲跌、高曝光低點閱率機會文章、TOP20名單異動（均依上方檢視期間 mA 計算）
-  const curRows = mA && mA.length ? aggSEO(mA) : [];
-  const curNonbuild = curRows.filter(r=>r.cat!=='建案頁');
-  const prevMonthsArr = mA && mA.length ? previousPeriodMonths(mA) : [];
-  const prevRows = prevMonthsArr.length ? aggSEO(prevMonthsArr) : [];
-  const prevNonbuild = prevRows.filter(r=>r.cat!=='建案頁');
-  const prevMapAll = {}; prevNonbuild.forEach(r=>prevMapAll[r.url]=r.clicks);
-  const curLabel = periodLabel(mA||[]), prevLabel = periodLabel(prevMonthsArr);
-  const avgCtr = curNonbuild.reduce((s,r)=>s+r.ctr,0)/Math.max(1,curNonbuild.length);
-  const opportunities = curNonbuild.filter(r=>r.impressions>=100 && r.ctr < avgCtr*0.6).sort((a,b)=>b.impressions-a.impressions).slice(0,8);
-  const top20Cur = curNonbuild.slice().sort((a,b)=>b.clicks-a.clicks).slice(0,20);
-  const prevTop20Urls = prevNonbuild.slice().sort((a,b)=>b.clicks-a.clicks).slice(0,20).map(r=>r.url);
-  const top20Stability = top20Cur.map((r,i)=>{
-    const prevRank = prevTop20Urls.indexOf(r.url);
-    return { url:r.url, clicks:r.clicks, position:r.position, ctr:r.ctr, rank:i+1, prevRank: prevRank>=0?prevRank+1:null, isNew: prevRank<0 };
-  });
+  /* --- 期間：跟隨頂部的檢視月份 --- */
+  function periodMonths(){ return monthsInRange(RANGE_A.start, RANGE_A.end).filter(m=>DATA.seo[m]); }
+  function shiftYear(ms){ return ms.map(m=>{ const [y,mm]=m.split('-'); return (Number(y)-1)+'-'+mm; }).filter(m=>DATA.seo[m]); }
+  function basisMonths(cur, basis){
+    if(basis==='yoy') return shiftYear(cur);
+    const i0 = months.indexOf(cur[0]); const n = cur.length;
+    return months.slice(Math.max(0,i0-n), i0);
+  }
+  const sum = (o, ms, k) => ms.reduce((s,m)=>s+((S[o]&&S[o][k][m])||0),0);
+  function wPos(o, ms){ let a=0,b=0; ms.forEach(m=>{ const im=(S[o]&&S[o].i[m])||0, ps=(S[o]&&S[o].p[m]); if(im>0&&ps){a+=ps*im;b+=im;} }); return b? a/b : null; }
+
+  /* --- 期望CTR：用本站自己各排名區間的中位數 --- */
+  function median(arr){ if(!arr.length) return null; const a=arr.slice().sort((x,y)=>x-y); const h=Math.floor(a.length/2); return a.length%2?a[h]:(a[h-1]+a[h])/2; }
+  function buildExpectedCtr(ms){
+    const buckets={};
+    Object.keys(S).forEach(u=>ms.forEach(m=>{
+      const im=S[u].i[m], ps=S[u].p[m], ct=S[u].t[m];
+      if(im>=50 && ps){ const b=Math.min(20,Math.max(1,Math.round(ps))); (buckets[b]=buckets[b]||[]).push(ct); }
+    }));
+    const exp={}; Object.keys(buckets).forEach(b=>exp[b]=median(buckets[b]));
+    return pos => { if(!pos) return null; const b=Math.min(20,Math.max(1,Math.round(pos))); return exp[b]||null; };
+  }
+
+  /* --- 首次出現月份（沒有上刊日時的備援） --- */
+  const firstSeen={}; Object.keys(S).forEach(u=>{ const ms=months.filter(m=>S[u].c[m]!=null||S[u].i[m]>0); firstSeen[u]=ms.length?ms[0]:null; });
+  function ageDays(url, curEnd){
+    const cls = CLS_MAP[url];
+    const base = (cls && cls.publish) ? cls.publish : (firstSeen[url] ? firstSeen[url]+'-01' : null);
+    if(!base) return null;
+    return Math.round((new Date(curEnd+'-28') - new Date(base)) / 86400000);
+  }
+
+  let basis='prev', group='all', sortMode='alert';
 
   p.innerHTML = `
-    ${panelHead('哪些文章需要優先改版', '找出正在退燒、需要優先改版的文章，並看漲跌與名單異動', 'Google Search Console', `${months.length}個月趨勢（${months[0]} ~ ${latest}）`)}
-    <h3 class="section-label">🚦 警示燈號（固定用全部歷史月份計算，不受上方檢視期間影響）</h3>
+    ${panelHead('內容健康監控', '用一致的規則分出「該立刻改版 / 該觀察 / 資料不足 / 正常」，並直接給出建議動作',
+      'Google Search Console ＋ 文章對應分類表', '期間跟隨上方「檢視月份」；門檻可在試算表 config 分頁調整')}
+    <div class="card" style="margin-bottom:14px;background:#FAF8F4">
+      <h3 style="margin-top:0">判定規則</h3>
+      <div class="cap" style="line-height:1.85">
+        每篇文章依序通過三道閘門，前兩道先把「不該判定的」排除掉，剩下的才計算觸發了幾項條件。<br>
+        <b>閘門①　曝光門檻</b>：期間合計曝光低於門檻 → <b>⚪ 資料不足</b>。避免 5 次點擊掉到 4 次就被當成 −20% 的誤判。<br>
+        <b>閘門②　新頁豁免</b>：上刊未滿設定天數 → <b>⚪ 豁免中</b>。新文章的排名爬升期本來就會震盪，不判定衰退。上刊日取自分類表。<br>
+        <b>閘門③　條件計數</b>：以下四項各自獨立判斷，命中越多越嚴重。
+        <div style="margin:6px 0 6px 14px">
+          ａ<b>點擊跌幅</b>：本期點擊較比較期下滑 ≥ 門檻<br>
+          ｂ<b>排名退步</b>：平均排名較比較期退步 &gt; 門檻名（用曝光加權計算）<br>
+          ｃ<b>CTR 達成率</b>：實際 CTR ÷ <u>本站同排名區間的中位數 CTR</u> &lt; 門檻。比絕對 CTR 公平——第 8 名本來就只有 2~3%<br>
+          ｄ<b>距歷史高峰</b>：本期點擊較該文歷史最高月下滑 ≥ 門檻
+        </div>
+        <b>分級</b>：命中 2 項以上 → <b style="color:#A14232">🔴 立即處理</b>　｜　命中 1 項 → <b style="color:#B8892B">🟠 需關注</b>　｜　未命中但已達門檻七成 → <b style="color:#8A7A1E">🟡 觀察中</b>　｜　皆未命中 → <b style="color:#2F6B5F">🟢 正常</b><br>
+        <b>比較期間</b>跟隨上方「檢視月份」。選 1 個月＝月對月，選 3 個月＝季對季。基準可選「上一期（等長）」或「去年同期」——房地產有明顯季節性，季度檢視建議用去年同期。<br>
+        <b>門檻</b>預設值來自試算表 config 分頁，下方滑桿只是臨時試算，重新整理會回到試算表的設定。
+      </div>
+    </div>
     <div class="stat-row" id="mStatStrip"></div>
     <div class="controls">
-      <div class="ctrl-group"><label>🔴 緊急：距歷史高峰下滑超過</label><div class="row"><input type="range" id="redSlider" min="15" max="70" value="40"><span class="ctrl-val" id="redVal">40%</span></div></div>
-      <div class="ctrl-group"><label>🟠 觀察：距歷史高峰下滑超過</label><div class="row"><input type="range" id="orangeSlider" min="10" max="50" value="25"><span class="ctrl-val" id="orangeVal">25%</span></div></div>
-      <div class="ctrl-group"><label>🟡 標題優化：點閱率相對衰退超過</label><div class="row"><input type="range" id="yellowSlider" min="10" max="50" value="25"><span class="ctrl-val" id="yellowVal">25%</span></div></div>
-      <div class="ctrl-group"><label>排序依據</label><select id="sortSelect"><option value="alert">警示等級</option><option value="clicks">最新月流量</option><option value="peak">距高峰跌幅</option></select></div>
+      <div class="ctrl-group"><label>比較基準</label>
+        <select id="basisSel"><option value="prev">上一期（等長）</option><option value="yoy">去年同期</option></select></div>
+      <div class="ctrl-group"><label>監控分群</label>
+        <select id="groupSel"><option value="all">全部</option><option value="SEO主打文章">SEO主打</option><option value="專家專欄">專家專欄</option><option value="生活提案一般">生活提案一般</option></select></div>
+      <div class="ctrl-group"><label>點擊跌幅門檻</label><div class="row"><input type="range" id="thClick" min="5" max="60" value="${TH.clickDrop}"><span class="ctrl-val" id="thClickV">${TH.clickDrop}%</span></div></div>
+      <div class="ctrl-group"><label>最低曝光門檻（期間合計）</label><div class="row"><input type="range" id="thImp" min="0" max="3000" step="50" value="${TH.minImp}"><span class="ctrl-val" id="thImpV">${TH.minImp}</span></div></div>
+      <div class="ctrl-group"><label>排序依據</label>
+        <select id="sortSel"><option value="alert">警示等級</option><option value="clicks">當期點擊</option><option value="drop">跌幅</option></select></div>
     </div>
-    <table><thead><tr><th style="width:20px"></th><th>文章</th><th class="num">最新月流量</th><th class="num">MoM</th><th class="num">距高峰跌幅</th><th class="num">平均排名</th><th class="num">點閱率</th><th>狀態</th></tr></thead>
-    <tbody id="mTableBody"></tbody></table>
+    <div class="panel-desc" id="mPeriodNote" style="margin:8px 0 12px"></div>
+    <table><thead><tr><th style="width:20px"></th><th>文章</th><th>分類</th><th class="num">當期點擊</th><th class="num">變化</th>
+      <th class="num">平均排名</th><th class="num">排名變化</th><th class="num">CTR達成率</th><th>建議動作</th></tr></thead>
+    <tbody id="mTableBody"></tbody></table>`;
 
-    <h3 class="section-label">📊 ${prevLabel} vs ${curLabel}，誰漲誰跌（依上方檢視期間計算）</h3>
-    <div class="card" style="margin-bottom:18px;">
-      <div class="threshold-ctrl">顯著變化門檻：漲跌幅超過 <input type="number" id="seoThreshold" value="30" min="1" max="500"> % <button id="seoThresholdBtn">套用</button>
-      <span style="margin-left:8px;">（比較基準：${prevMonthsArr.length?prevMonthsArr.join('~'):'無足夠歷史'} vs ${(mA||[]).join('~')}）</span></div>
-      <div id="seoMoversArea"></div>
-    </div>
+  function evaluate(){
+    const cur = periodMonths(); if(!cur.length) return {rows:[], cur:[], base:[]};
+    const base = basisMonths(cur, basis);
+    const expCtr = buildExpectedCtr(cur);
+    const curEnd = cur[cur.length-1];
+    const rows = Object.keys(S).map(u=>{
+      const cls = CLS_MAP[u] || {};
+      const role = (typeof classifyRole==='function') ? classifyRole(u) : (cls.role || '生活提案一般');
+      const c1=sum(u,cur,'c'), i1=sum(u,cur,'i'), c0=sum(u,base,'c');
+      const p1=wPos(u,cur), p0=wPos(u,base);
+      const ctr = i1>0 ? c1/i1 : null;
+      const e = expCtr(p1);
+      const achieve = (ctr!=null && e) ? ctr/e*100 : null;
+      const dClick = (c0>0) ? (c1-c0)/c0*100 : null;
+      const dPos = (p1!=null && p0!=null) ? p1-p0 : null;          // 正=退步
+      const peak = Math.max(0, ...months.map(m=>(S[u].c[m]||0)));
+      const peakDrop = peak>0 ? (peak-c1)/peak*100 : 0;
+      const age = ageDays(u, curEnd);
+      const scissors = (base.length && sum(u,base,'i')>0) ? ((i1-sum(u,base,'i'))/sum(u,base,'i')*100 > 0 && dClick!=null && dClick < -10) : false;
 
-    <h3 class="section-label">🎯 高曝光低點閱率（標題待優化）</h3>
-    <div class="card" style="margin-bottom:18px;"><div class="cap">曝光≥100次、點閱率低於當期平均60%——排名不錯但標題不吸引人點擊</div>
-    <table class="sortable"><thead><tr><th>文章</th><th class="num">曝光</th><th class="num">點擊</th><th class="num">點閱率</th><th class="num">排名</th></tr></thead>
-    <tbody>${opportunities.map(r=>`<tr><td>${articleLink(r.url)}</td><td class="num" data-sort-key="${r.impressions}">${fmt(r.impressions)}</td><td class="num" data-sort-key="${r.clicks}">${fmt(r.clicks)}</td><td class="num" data-sort-key="${r.ctr}" style="color:${GOLD}">${(r.ctr*100).toFixed(2)}%</td><td class="num" data-sort-key="${r.position}">${r.position.toFixed(1)}</td></tr>`).join('') || '<tr><td colspan="5">此期間無明顯機會文章</td></tr>'}</tbody></table></div>
-
-    <h3 class="section-label">🏆 TOP20名單異動（依上方檢視期間計算）</h3>
-    <div class="card"><table class="sortable"><thead><tr><th>#</th><th>文章</th><th class="num">點擊</th><th class="num">排名</th><th class="num">點閱率</th><th>較上期</th></tr></thead>
-    <tbody>${top20Stability.map(a=>{
-      const moveTag = a.isNew ? `<span class="badge orange">🆕新進</span>` : (a.prevRank===a.rank ? `<span class="badge green">持平</span>` : (a.prevRank>a.rank ? `<span class="badge green">▲${a.prevRank-a.rank}</span>` : `<span class="badge red">▼${a.rank-a.prevRank}</span>`));
-      return `<tr><td data-sort-key="${a.rank}">${a.rank}</td><td>${articleLink(a.url)}</td><td class="num" data-sort-key="${a.clicks}">${fmt(a.clicks)}</td><td class="num" data-sort-key="${a.position}">${a.position.toFixed(1)}</td><td class="num" data-sort-key="${a.ctr}">${(a.ctr*100).toFixed(1)}%</td><td>${moveTag}</td></tr>`;
-    }).join('') || '<tr><td colspan="6">此期間無資料</td></tr>'}</tbody></table></div>
-  `;
-  renderSeoMovers(curNonbuild, prevMapAll);
-  const seoThresholdBtn = document.getElementById('seoThresholdBtn');
-  if(seoThresholdBtn) seoThresholdBtn.addEventListener('click', ()=>renderSeoMovers(curNonbuild, prevMapAll));
-  function lastValid(arr){ for(let i=arr.length-1;i>=0;i--){ if(arr[i]!=null) return {v:arr[i], i}; } return {v:null,i:-1}; }
-  function prevValid(arr, idx){ for(let i=idx-1;i>=0;i--){ if(arr[i]!=null) return arr[i]; } return null; }
-  function computeMetrics(a){
-    const clicks=a.clicks; const {v:latestV,i:latestIdx}=lastValid(clicks); const prev=prevValid(clicks,latestIdx);
-    const mom=(prev&&prev>0)?(latestV-prev)/prev*100:0;
-    const nz=clicks.filter(v=>v!=null); const peak=nz.length?Math.max(...nz):0; const peakDrop=peak>0?(peak-latestV)/peak*100:0;
-    const pos=a.position.filter(x=>x!=null);
-    const avgPosRecent=pos.slice(-3).reduce((s,v)=>s+v,0)/Math.max(1,pos.slice(-3).length);
-    const avgPosEarly=pos.slice(0,3).reduce((s,v)=>s+v,0)/Math.max(1,pos.slice(0,3).length);
-    const posWorsen=avgPosRecent-avgPosEarly;
-    const ctrArr=a.ctr.filter(x=>x!=null);
-    const ctrRecent=ctrArr.slice(-3).reduce((s,v)=>s+v,0)/Math.max(1,ctrArr.slice(-3).length);
-    const ctrEarly=ctrArr.slice(0,3).reduce((s,v)=>s+v,0)/Math.max(1,ctrArr.slice(0,3).length);
-    const ctrDecline=ctrEarly>0?(ctrEarly-ctrRecent)/ctrEarly*100:0;
-    return {latest:latestV,mom,peak,peakDrop,avgPosRecent,posWorsen,ctrRecent,ctrDecline};
+      let status, reasons=[];
+      if(i1 < TH.minImp){ status='na'; }
+      else if(age!=null && age < TH.exemptDays){ status='exempt'; }
+      else {
+        const hit=[];
+        if(dClick!=null && dClick <= -TH.clickDrop) hit.push('click');
+        if(dPos!=null && dPos > TH.posWorsen) hit.push('pos');
+        if(achieve!=null && achieve < TH.ctrAchieve) hit.push('ctr');
+        if(peakDrop >= TH.peakDrop) hit.push('peak');
+        reasons=hit;
+        if(hit.length>=2) status='red';
+        else if(hit.length===1) status='orange';
+        else if((dClick!=null && dClick <= -TH.clickDrop*0.7) || (dPos!=null && dPos > TH.posWorsen*0.7)) status='yellow';
+        else status='green';
+      }
+      let action='維持現狀';
+      if(status==='na') action='曝光不足，不判定';
+      else if(status==='exempt') action='新頁觀察期，只看成長';
+      else if(reasons.includes('peak') && reasons.includes('click')) action='全文重寫，更新法規與數據';
+      else if(reasons.includes('pos')) action='補內容、更新時效性資訊';
+      else if(reasons.includes('ctr') || scissors) action='改標題與 meta 描述';
+      else if(reasons.includes('click')) action='檢查是否被新內容蠶食';
+      else if(status==='yellow') action='列入觀察，下期再看';
+      return {u, cls, role, c1, i1, dClick, p1, dPos, achieve, peakDrop, status, action};
+    }).filter(r => r.c1>0 || r.i1>0);
+    return {rows, cur, base};
   }
-  function classify(m,th){
-    if(m.peakDrop>=th.red && m.mom<0) return 'red';
-    if(m.peakDrop>=th.orange || m.posWorsen>=2) return 'orange';
-    if(m.ctrDecline>=th.yellow && m.posWorsen<1.5) return 'yellow';
-    return 'green';
-  }
-  const badgeText={red:'🔴 緊急改版',orange:'🟠 排入觀察',yellow:'🟡 標題優化',green:'🟢 正常'};
-  let sortMode='alert', th={red:40,orange:25,yellow:25};
+
+  const BADGE={red:'🔴 立即處理',orange:'🟠 需關注',yellow:'🟡 觀察中',green:'🟢 正常',na:'⚪ 資料不足',exempt:'⚪ 豁免中'};
+  const COLOR={red:RUST,orange:GOLD,yellow:'#8A7A1E',green:TEAL,na:STONE,exempt:STONE};
+
   function render(){
-    const scored = articles.map(a=>{ const m=computeMetrics(a); return {a,m,status:classify(m,th)}; });
-    const counts={red:0,orange:0,yellow:0,green:0}; scored.forEach(s=>counts[s.status]++);
-    document.getElementById('mStatStrip').innerHTML = ['red','orange','yellow','green'].map(k=>
-      `<div class="stat-chip"><div class="n" style="color:${{red:RUST,orange:GOLD,yellow:'#8A7A1E',green:TEAL}[k]}">${counts[k]}</div><div class="l">${badgeText[k]}</div></div>`).join('');
-    const order={red:0,orange:1,yellow:2,green:3};
-    let sorted=scored.slice();
-    if(sortMode==='alert') sorted.sort((x,y)=>order[x.status]-order[y.status]||y.m.peakDrop-x.m.peakDrop);
-    else if(sortMode==='clicks') sorted.sort((x,y)=>y.m.latest-x.m.latest);
-    else if(sortMode==='peak') sorted.sort((x,y)=>y.m.peakDrop-x.m.peakDrop);
-    document.getElementById('mTableBody').innerHTML = sorted.map(({a,m,status})=>{
-      const momArrow = m.mom>=0 ? `<span style="color:${TEAL}">▲${m.mom.toFixed(1)}%</span>` : `<span style="color:${RUST}">▼${Math.abs(m.mom).toFixed(1)}%</span>`;
-      return `<tr onclick='openMonitorModal(${JSON.stringify(a.url)})'>
-        <td><span class="dot ${status}"></span></td><td><b>${getArticleTitle(a.url)}</b><div class="url-sub">${a.url}</div></td>
-        <td class="num">${fmt(m.latest)}</td><td class="num">${momArrow}</td><td class="num">${m.peakDrop.toFixed(0)}%</td>
-        <td class="num">${m.avgPosRecent?m.avgPosRecent.toFixed(1):'—'}</td><td class="num">${m.ctrRecent?m.ctrRecent.toFixed(1)+'%':'—'}</td>
-        <td><span class="badge ${status}">${badgeText[status]}</span></td></tr>`;
-    }).join('');
+    const {rows, cur, base} = evaluate();
+    document.getElementById('mPeriodNote').innerHTML = cur.length
+      ? `當期：${cur[0]} ~ ${cur[cur.length-1]}（${cur.length}個月）　｜　比較基準：${base.length? base[0]+' ~ '+base[base.length-1] : '<b style="color:'+RUST+'">無對應期間，變化欄為空</b>'}`
+      : '請於上方選擇檢視月份';
+    const shown = rows.filter(r => group==='all' || r.role===group);
+    const counts={red:0,orange:0,yellow:0,green:0,na:0,exempt:0};
+    shown.forEach(r=>counts[r.status]++);
+    document.getElementById('mStatStrip').innerHTML = ['red','orange','yellow','green','na','exempt'].map(k=>
+      `<div class="stat-chip"><div class="n" style="color:${COLOR[k]}">${counts[k]}</div><div class="l">${BADGE[k]}</div></div>`).join('');
+    const ord={red:0,orange:1,yellow:2,green:3,exempt:4,na:5};
+    let list=shown.slice();
+    if(sortMode==='alert') list.sort((a,b)=>ord[a.status]-ord[b.status] || b.c1-a.c1);
+    else if(sortMode==='clicks') list.sort((a,b)=>b.c1-a.c1);
+    else list.sort((a,b)=>(a.dClick??0)-(b.dClick??0));
+    list=list.slice(0,120);
+    document.getElementById('mTableBody').innerHTML = list.map(r=>{
+      const dc = r.dClick==null ? '—' : `<span style="color:${r.dClick>=0?TEAL:RUST}">${r.dClick>=0?'▲':'▼'}${Math.abs(r.dClick).toFixed(0)}%</span>`;
+      const dp = r.dPos==null ? '—' : `<span style="color:${r.dPos<=0?TEAL:RUST}">${r.dPos>0?'+':''}${r.dPos.toFixed(1)}</span>`;
+      const ac = r.achieve==null ? '—' : `<span style="color:${r.achieve<TH.ctrAchieve?RUST:INK}">${r.achieve.toFixed(0)}%</span>`;
+      const ordv = {red:0,orange:1,yellow:2,green:3,exempt:4,na:5}[r.status];
+      return `<tr onclick='openMonitorModal(${JSON.stringify(r.u)})'>
+        <td data-sort="${ordv}"><span class="dot ${r.status==='na'||r.status==='exempt'?'green':r.status}" style="background:${COLOR[r.status]}"></span></td>
+        <td data-sort="${(getArticleTitle(r.u)||'').replace(/"/g,'')}"><b>${getArticleTitle(r.u)}</b><div class="url-sub">${r.u}</div></td>
+        <td>${(r.cls.big||'')}${r.cls.mid?' / '+r.cls.mid:''}</td>
+        <td class="num" data-sort="${r.c1}">${fmt(r.c1)}</td>
+        <td class="num" data-sort="${r.dClick==null?'':r.dClick.toFixed(2)}">${dc}</td>
+        <td class="num" data-sort="${r.p1==null?'':r.p1.toFixed(2)}">${r.p1?r.p1.toFixed(1):'—'}</td>
+        <td class="num" data-sort="${r.dPos==null?'':r.dPos.toFixed(2)}">${dp}</td>
+        <td class="num" data-sort="${r.achieve==null?'':r.achieve.toFixed(1)}">${ac}</td>
+        <td data-sort="${ordv}"><span class="badge ${r.status==='na'||r.status==='exempt'?'green':r.status}">${BADGE[r.status]}</span><div class="url-sub">${r.action}</div></td></tr>`;
+    }).join('') || `<tr><td colspan="9" style="text-align:center;padding:24px;color:#888">此分群在本期間沒有資料</td></tr>`;
   }
+
   window.openMonitorModal = function(url){
-    const a = articles.find(x=>x.url===url); const m = computeMetrics(a); const status = classify(m, th);
-    const actionMap = {red:'建議：全文重寫＋更新數據/法規＋補充當年度新規定，2週內排入改版排程。',orange:'建議：檢查標題與內容時效性，觀察下月是否持續惡化。',yellow:'建議：排名尚可但點閱率下滑，優先改寫標題與meta描述。',green:'目前表現穩定，維持現狀。'};
+    const s=S[url]; if(!s) return;
+    const cs=months.map(m=>s.c[m]??null), ps=months.map(m=>s.p[m]??null);
     document.getElementById('modalContent').innerHTML = `
-      <div class="modal-head"><div><h2>${articleLink(a.url)}</h2><div class="modal-meta">${months.length}個月點擊/排名趨勢</div></div>
+      <div class="modal-head"><div><h2>${articleLink(url)}</h2>
+      <div class="modal-meta">${months[0]} ~ ${months[months.length-1]} 全期間點擊與平均排名</div></div>
       <button class="modal-close" onclick="document.getElementById('overlay').classList.remove('show')">&times;</button></div>
-      ${chartBox('trendChart', 240)}
-      <div class="action-box"><b>${badgeText[status]}：</b>${actionMap[status]}</div>`;
+      ${chartBox('trendChart',240)}`;
     document.getElementById('overlay').classList.add('show');
-    setTimeout(()=>{
-      safeChart('trendChart', { type:'line', data:{ labels: months.map(monthLabel), datasets:[
-        {label:'點擊', data:a.clicks, borderColor:TEAL, backgroundColor:TEAL, tension:.3, yAxisID:'y', spanGaps:true},
-        {label:'平均排名', data:a.position, borderColor:GOLD, backgroundColor:GOLD, tension:.3, yAxisID:'y1', borderDash:[4,3], spanGaps:true}
-      ]}, options:{ plugins:{legend:{position:'bottom'}}, scales:{ y:{title:{display:true,text:'點擊'}}, y1:{position:'right', reverse:true, title:{display:true,text:'平均排名'}, grid:{drawOnChartArea:false}} } } });
-    },30);
+    setTimeout(()=>{ safeChart('trendChart',{type:'line',data:{labels:months.map(monthLabel),datasets:[
+      {label:'點擊',data:cs,borderColor:TEAL,backgroundColor:TEAL,tension:.3,yAxisID:'y',spanGaps:true},
+      {label:'平均排名',data:ps,borderColor:GOLD,backgroundColor:GOLD,tension:.3,yAxisID:'y1',borderDash:[4,3],spanGaps:true}
+    ]},options:{plugins:{legend:{position:'bottom'}},scales:{y:{title:{display:true,text:'點擊'}},
+      y1:{position:'right',reverse:true,title:{display:true,text:'平均排名'},grid:{drawOnChartArea:false}}}}}); },30);
   };
   document.getElementById('overlay').addEventListener('click', e=>{ if(e.target.id==='overlay') e.target.classList.remove('show'); });
-  ['red','orange','yellow'].forEach(k=>{ document.getElementById(k+'Slider').addEventListener('input', e=>{ th[k]=+e.target.value; document.getElementById(k+'Val').textContent=th[k]+'%'; render(); }); });
-  document.getElementById('sortSelect').addEventListener('change', e=>{ sortMode=e.target.value; render(); });
+  document.getElementById('basisSel').addEventListener('change', e=>{ basis=e.target.value; render(); });
+  document.getElementById('groupSel').addEventListener('change', e=>{ group=e.target.value; render(); });
+  document.getElementById('sortSel').addEventListener('change', e=>{ sortMode=e.target.value; render(); });
+  document.getElementById('thClick').addEventListener('input', e=>{ TH.clickDrop=+e.target.value; document.getElementById('thClickV').textContent=TH.clickDrop+'%'; render(); });
+  document.getElementById('thImp').addEventListener('input', e=>{ TH.minImp=+e.target.value; document.getElementById('thImpV').textContent=TH.minImp; render(); });
   render();
 }
 
@@ -825,100 +866,6 @@ function renderAIO(mA, mB){
 }
 
 /* ============ ⑦ 導流成效：內容→建案 ============ */
-// 建立「區域→建案→內容」三層結構，合併按鈕UTM與內文廣告兩種來源
-function buildRegionTree(bannerMonths, utmMonths){
-  const tree = {}; // {city: {buildingKey: {impressions, clicks, users, items:[]}}}
-  function ensure(city, bKey){
-    tree[city] = tree[city] || {};
-    tree[city][bKey] = tree[city][bKey] || {impressions:0, clicks:0, users:0, items:[]};
-    return tree[city][bKey];
-  }
-  bannerMonths.forEach(m=>{
-    DATA.bannerAds[m].data.forEach(r=>{
-      const code = extractBannerDest(r['圖片名稱']);
-      const info = getBuildingInfo(code);
-      const city = info ? info.city : (code==='LINE推廣' ? 'LINE推廣（非特定區域）' : '其他/未列入對照表');
-      const bKey = info ? `${info.name}（${code}）` : code;
-      const node = ensure(city, bKey);
-      const impr = toNum(r['曝光']), clk = toNum(r['點擊']);
-      node.impressions += impr; node.clicks += clk;
-      node.items.push({type:'內文廣告', label:`${r['廣告活動']||''} ／ ${r['圖片名稱']||''}`, impressions:impr, clicks:clk, users:null});
-    });
-  });
-  utmMonths.forEach(m=>{
-    DATA.utm[m].data.forEach(r=>{
-      const code = r['廣告活動'];
-      const info = getBuildingInfo(code);
-      if(!info) return; // 非建案代碼（SEO/reservation/AIO/BN等）不屬於區域分析，略過
-      const city = info.city;
-      const bKey = `${info.name}（${code}）`;
-      const node = ensure(city, bKey);
-      const users = toNum(r['所有使用者']);
-      node.users += users;
-      node.items.push({type:'文章按鈕', label:r['網頁路徑']||r['url']||'', impressions:null, clicks:null, users});
-    });
-  });
-  return tree;
-}
-function renderRegionTree(containerId, tree){
-  const container = document.getElementById(containerId);
-  const cityTotals = {};
-  Object.keys(tree).forEach(city=>{
-    cityTotals[city] = Object.values(tree[city]).reduce((s,b)=>s+b.impressions+b.clicks*0+b.users, 0) + Object.values(tree[city]).reduce((s,b)=>s+b.impressions,0);
-  });
-  // 用「曝光+使用者」合計排序城市（曝光與使用者單位不同，僅供排序參考，不做加總呈現）
-  const cityScore = {};
-  Object.keys(tree).forEach(city=>{ cityScore[city] = Object.values(tree[city]).reduce((s,b)=>s+b.impressions+b.users,0); });
-  const cityOrder = Object.keys(tree).sort((a,b)=>cityScore[b]-cityScore[a]);
-  if(!cityOrder.length){ container.innerHTML = '<p class="cap">此期間無可對照到建案代碼的資料</p>'; return; }
-
-  container.innerHTML = cityOrder.map(city=>{
-    const buildings = tree[city];
-    const bImpr = Object.values(buildings).reduce((s,b)=>s+b.impressions,0);
-    const bUsers = Object.values(buildings).reduce((s,b)=>s+b.users,0);
-    return `<div class="tree-row tree-big" data-city="${city}"><span class="tree-toggle">▸</span> <b>${city}</b>
-      <span class="tree-meta">內文廣告曝光 ${fmt(bImpr)}　｜　按鈕使用者 ${fmt(bUsers)}</span></div>
-      <div class="tree-children" id="bld-${cssId(city)}" style="display:none"></div>`;
-  }).join('');
-
-  cityOrder.forEach(city=>{
-    const row = container.querySelector(`.tree-row[data-city="${CSS.escape(city)}"]`);
-    row.addEventListener('click', ()=>{
-      const bldContainer = document.getElementById('bld-'+cssId(city));
-      const isOpen = bldContainer.style.display !== 'none';
-      bldContainer.style.display = isOpen ? 'none' : 'block';
-      row.querySelector('.tree-toggle').textContent = isOpen ? '▸' : '▾';
-      if(!isOpen && !bldContainer.dataset.built){
-        const buildings = tree[city];
-        const bOrder = Object.keys(buildings).sort((a,b)=>(buildings[b].impressions+buildings[b].users)-(buildings[a].impressions+buildings[a].users));
-        bldContainer.innerHTML = bOrder.map(bKey=>{
-          const b = buildings[bKey];
-          return `<div class="tree-row tree-mid" data-city="${city}" data-b="${bKey}"><span class="tree-toggle">▸</span> ${bKey}
-            <span class="tree-meta">曝光${fmt(b.impressions)}／點擊${fmt(b.clicks)}／按鈕使用者${fmt(b.users)}</span></div>
-            <div class="tree-children" id="item-${cssId(city)}-${cssId(bKey)}" style="display:none"></div>`;
-        }).join('');
-        bldContainer.dataset.built = '1';
-        bOrder.forEach(bKey=>{
-          const bRow = bldContainer.querySelector(`.tree-row[data-b="${CSS.escape(bKey)}"]`);
-          bRow.addEventListener('click', (ev)=>{
-            ev.stopPropagation();
-            const itemContainer = document.getElementById(`item-${cssId(city)}-${cssId(bKey)}`);
-            const itemOpen = itemContainer.style.display !== 'none';
-            itemContainer.style.display = itemOpen ? 'none' : 'block';
-            bRow.querySelector('.tree-toggle').textContent = itemOpen ? '▸' : '▾';
-            if(!itemOpen && !itemContainer.dataset.built){
-              const items = buildings[bKey].items;
-              itemContainer.innerHTML = `<table><thead><tr><th>類型</th><th>內容</th><th class="num">曝光</th><th class="num">點擊</th><th class="num">使用者</th></tr></thead><tbody>
-                ${items.map(it=>`<tr><td>${it.type}</td><td>${it.label}</td><td class="num">${it.impressions!=null?fmt(it.impressions):'—'}</td><td class="num">${it.clicks!=null?fmt(it.clicks):'—'}</td><td class="num">${it.users!=null?fmt(it.users):'—'}</td></tr>`).join('')}
-              </tbody></table>`;
-              itemContainer.dataset.built = '1';
-            }
-          });
-        });
-      }
-    });
-  });
-}
 function renderPath(mA){
   const p = document.getElementById('panel-path');
   const utmMonths = mA.filter(m=>DATA.utm[m]);
@@ -980,10 +927,6 @@ function renderPath(mA){
     <div class="empty-state" style="margin-top:18px;"><div class="icon">🔲</div><h4>GA4漏斗探索資料待補</h4>
     <p>「看過生活提案→看過建案頁（自然流量）」的漏斗步驟人數/轉換率，設定完成後匯出表格即可補上。</p>
     <span class="need-tag">GA4漏斗探索匯出表格</span></div>
-
-    <h3 class="section-label">Ⓒ 依區域→建案分析（點展開）</h3>
-    <div class="card"><div class="cap">先看哪個區域表現好，展開看該區域下哪個建案，再展開看是哪些內容/按鈕貢獻的。合併Ⓐ按鈕與Ⓑ內文廣告資料，僅涵蓋能對照到建案代碼的部分。</div>
-    <div id="regionTree"></div></div>
   `;
   if(utmMonths.length){
     safeChart('pathTrend', { type:'bar', data:{ labels: utmMonths.map(monthLabel), datasets: destTypes.map((d,i)=>({label:d, data:utmMonths.map(m=>destByMonth[d][m]||0), backgroundColor:[RUST,GOLD,TEAL,SLATE,PLUM,STONE][i%6]})) },
@@ -995,7 +938,6 @@ function renderPath(mA){
       {type:'line', label:'點擊', data: bannerMonths.map(m=>bannerMonthlyClicks[m]||0), borderColor:RUST, backgroundColor:RUST, yAxisID:'y1', tension:.3}
     ]}, options:{ plugins:{legend:{position:'bottom'}}, scales:{ y:{title:{display:true,text:'曝光'}}, y1:{position:'right', title:{display:true,text:'點擊'}, grid:{drawOnChartArea:false}} } } });
   }
-  renderRegionTree('regionTree', buildRegionTree(bannerMonths, utmMonths));
 }
 
 /* ============ ⑧ 轉換與留單 ============ */
@@ -1010,7 +952,7 @@ function renderConversion(mA, mB){
   const series = conversionMonthlySeries(ALL_MONTHS);
   p.innerHTML = `
     ${panelHead('流量有沒有變成名單', '了解流量最後有沒有變成名單，哪裡在浪費流量', 'GA4到達頁面')}
-    <div class="card" style="margin-bottom:18px;"><h3>建案頁轉換率逐月趨勢</h3><div class="cap">${ALL_MONTHS[0]}~${ALL_MONTHS[ALL_MONTHS.length-1]}${missingMonthsNote(series)}</div>${chartBox('cvTrend',200)}</div>
+    <div class="card" style="margin-bottom:18px;"><h3>建案頁轉換率逐月趨勢</h3><div class="cap">${ALL_MONTHS[0]}~${ALL_MONTHS[ALL_MONTHS.length-1]}</div>${chartBox('cvTrend',200)}</div>
     <div class="grid2">
       <div class="card"><h3>各類別預約賞屋轉換率（當期）</h3>${chartBox('cvChart',220)}</div>
       <div class="card"><h3>各類型點擊數（建案頁，當期）</h3><table><thead><tr><th>類型</th><th class="num">點擊數</th></tr></thead>
@@ -1025,72 +967,40 @@ function renderConversion(mA, mB){
     <p>需要銷售系統的成交名單反查造訪紀錄，或GA4事件層級明細＋使用者ID才能建立。</p>
     <span class="need-tag">銷售成交名單</span><span class="need-tag">GA4事件層級明細</span></div>
   `;
-  safeChart('cvTrend', { type:'line', data:{labels:series.map(s=>monthLabel(s.month)), datasets:[{label:'建案頁轉換率(%)', data:series.map(s=>s.cvr), borderColor:RUST, backgroundColor:RUST, tension:.3, spanGaps:false}]}, options:{plugins:{legend:{display:false}}} });
+  safeChart('cvTrend', { type:'line', data:{labels:series.map(s=>monthLabel(s.month)), datasets:[{label:'建案頁轉換率(%)', data:series.map(s=>s.cvr), borderColor:RUST, backgroundColor:RUST, tension:.3}]}, options:{plugins:{legend:{display:false}}} });
   safeChart('cvChart', { type:'bar', data:{labels:catArr.map(x=>x[0]), datasets:[{label:'轉換率(%)', data:catArr.map(x=>x[1].users?x[1].appts/x[1].users*100:0), backgroundColor:catArr.map(x=>CAT_COLORS[x[0]]||SLATE)}]}, options:{plugins:{legend:{display:false}}} });
 }
 
 /* ============ ⑨ 建案獨立分析 ============ */
-function extractBuildingCodeFromUrl(url){
-  const m = String(url||'').match(/\/buildings\/([A-Za-z0-9]+)/i);
-  return m ? m[1].toUpperCase() : null;
-}
 function renderBuilding(mA){
   const p = document.getElementById('panel-building');
   const months = mA.filter(m=>DATA.pageview[m]);
   if(!months.length){ renderEmpty('building','單一建案表現','此期間尚無資料',['同⑧']); return; }
   const buildings = {}; const buildingsMonthly = {};
-  const trMonths = mA.filter(m=>DATA.traffic[m]);
-  const buildingChannels = {};
   months.forEach(m=>{
     DATA.pageview[m].data.forEach(r=>{
       const url = normUrl(r['到達網頁']); if(!url.includes('buildings')) return;
-      const code = extractBuildingCodeFromUrl(url);
-      const info = getBuildingInfo(code);
-      buildings[url] = buildings[url] || { title:r['網頁標題'], code, info, users:0, appts:0 };
+      buildings[url] = buildings[url] || { title:r['網頁標題'], users:0, appts:0 };
       buildings[url].users += toNum(r['所有使用者']); buildings[url].appts += toNum(r['點擊預約賞屋']);
       buildingsMonthly[url] = buildingsMonthly[url] || {};
       buildingsMonthly[url][m] = (buildingsMonthly[url][m]||0) + toNum(r['所有使用者']);
     });
   });
-  trMonths.forEach(m=>{
-    DATA.traffic[m].data.forEach(r=>{
-      const url = normUrl(r['網頁路徑']); if(!url.includes('buildings') || !buildings[url]) return;
-      const chan = classifyChannel(r['來源/媒介']);
-      buildingChannels[url] = buildingChannels[url] || {};
-      buildingChannels[url][chan] = (buildingChannels[url][chan]||0) + toNum(r['所有使用者']);
-    });
-  });
   const list = Object.entries(buildings).sort((a,b)=>b[1].users-a[1].users);
-  // 依區域分組，供下拉選單使用optgroup
-  const byCity = {};
-  list.forEach(([u,d])=>{ const city = d.info?d.info.city:'其他/未列入對照表'; byCity[city]=byCity[city]||[]; byCity[city].push([u,d]); });
-  const cityOrder = Object.keys(byCity).sort((a,b)=>byCity[b].reduce((s,x)=>s+x[1].users,0)-byCity[a].reduce((s,x)=>s+x[1].users,0));
-
   p.innerHTML = `
-    ${panelHead('單一建案表現', '檢視單一建案自己的表現，並可對照建案代碼所屬區域', 'GA4到達頁面 ＋ 建案代碼對照表')}
-    <div class="controls"><div class="ctrl-group"><label>選擇建案（依區域分組）</label><select id="buildingSelect">
-      ${cityOrder.map(city=>`<optgroup label="${city}">${byCity[city].map(([u,d])=>`<option value="${u}">${d.info?d.info.name+'（'+d.code+'）':d.title}</option>`).join('')}</optgroup>`).join('')}
+    ${panelHead('單一建案表現', '檢視單一建案自己的表現，不與其他建案混在一起看', 'GA4到達頁面')}
+    <div class="controls"><div class="ctrl-group"><label>選擇建案</label><select id="buildingSelect">
+      ${list.map(([u,d])=>`<option value="${u}">${d.title}</option>`).join('')}
     </select></div></div>
     <div id="buildingDetail"></div>
-
-    <h3 class="section-label">全建案一覽（可排序）</h3>
-    <div class="card"><table class="sortable"><thead><tr><th>建案</th><th>區域</th><th class="num">使用者數</th><th class="num">預約賞屋</th><th class="num">轉換率</th></tr></thead>
-    <tbody>${list.map(([u,d])=>`<tr><td>${d.info?d.info.name+'（'+d.code+'）':d.title}</td><td>${d.info?d.info.city+(d.info.district?'／'+d.info.district:''):'—'}</td><td class="num" data-sort-key="${d.users}">${fmt(d.users)}</td><td class="num" data-sort-key="${d.appts}">${fmt(d.appts)}</td><td class="num" data-sort-key="${d.users?d.appts/d.users*100:0}">${d.users?(d.appts/d.users*100).toFixed(2):0}%</td></tr>`).join('')}</tbody></table></div>
   `;
   function showBuilding(url){
     const d = buildings[url];
-    const chans = buildingChannels[url] || {};
-    const chanArr = Object.entries(chans).sort((a,b)=>b[1]-a[1]);
     document.getElementById('buildingDetail').innerHTML = `
       <div class="stat-row"><div class="stat-chip"><div class="n">${fmt(d.users)}</div><div class="l">使用者數（當期）</div></div>
       <div class="stat-chip"><div class="n">${fmt(d.appts)}</div><div class="l">預約賞屋點擊</div></div>
-      <div class="stat-chip"><div class="n">${d.users?(d.appts/d.users*100).toFixed(2):0}%</div><div class="l">轉換率</div></div>
-      <div class="stat-chip"><div class="n" style="font-size:16px;">${d.info?d.info.city+(d.info.district?'／'+d.info.district:'')+(d.info.area?'／'+d.info.area:''):'未列入對照表'}</div><div class="l">所屬區域</div></div></div>
-      <div class="grid2">
-        <div class="card"><h3>逐月流量趨勢</h3>${chartBox('buildingTrend',200)}</div>
-        <div class="card"><h3>流量管道組成（當期）</h3><table><thead><tr><th>管道</th><th class="num">使用者數</th></tr></thead>
-        <tbody>${chanArr.map(([c,v])=>`<tr><td>${c}</td><td class="num">${fmt(v)}</td></tr>`).join('') || '<tr><td colspan="2">此期間尚無data/traffic-source/資料</td></tr>'}</tbody></table></div>
-      </div>`;
+      <div class="stat-chip"><div class="n">${d.users?(d.appts/d.users*100).toFixed(2):0}%</div><div class="l">轉換率</div></div></div>
+      <div class="card"><h3>逐月流量趨勢</h3>${chartBox('buildingTrend',200)}</div>`;
     const fullMonths = ALL_MONTHS.filter(m=>DATA.pageview[m]);
     const fullSeries = fullMonths.map(m=>{
       const pv = DATA.pageview[m]; let u=0;
@@ -1131,3 +1041,62 @@ function renderGuide(){
 }
 
 main();
+
+
+/* ============ 表格排序：所有表格點表頭即可升冪／降冪 ============ */
+(function installTableSort(){
+  const css = document.createElement('style');
+  css.textContent = `
+    table thead th{cursor:pointer;user-select:none;position:relative;padding-right:16px}
+    table thead th.nosort{cursor:default}
+    table thead th::after{content:'\\2195';position:absolute;right:4px;opacity:.22;font-size:10px}
+    table thead th.nosort::after{content:''}
+    table thead th.sort-asc::after{content:'\\2191';opacity:.9}
+    table thead th.sort-desc::after{content:'\\2193';opacity:.9}`;
+  document.head.appendChild(css);
+
+  function cellVal(tr, i){
+    const td = tr.children[i]; if(!td) return '';
+    const d = td.getAttribute('data-sort');
+    return d !== null ? d : td.textContent.trim();
+  }
+  function toNumeric(v){
+    if(v === '' || v === '—' || v === null) return null;
+    const n = parseFloat(String(v).replace(/[,%\s\u25b2\u25bc+]/g,''));
+    return isNaN(n) ? null : n;
+  }
+
+  document.addEventListener('click', function(e){
+    const th = e.target.closest('thead th');
+    if(!th || th.classList.contains('nosort')) return;
+    const table = th.closest('table'); if(!table) return;
+    const tbody = table.tBodies[0]; if(!tbody) return;
+    const idx = Array.prototype.indexOf.call(th.parentNode.children, th);
+
+    const rows = Array.prototype.filter.call(tbody.rows,
+      r => !r.querySelector('td[colspan]'));
+    if(rows.length < 2) return;
+
+    const asc = !th.classList.contains('sort-asc');
+    Array.prototype.forEach.call(th.parentNode.children,
+      x => x.classList.remove('sort-asc','sort-desc'));
+    th.classList.add(asc ? 'sort-asc' : 'sort-desc');
+
+    const vals = rows.map(r => cellVal(r, idx));
+    const allNum = vals.every(v => v === '' || v === '—' || toNumeric(v) !== null);
+
+    rows.sort((a,b)=>{
+      const va = cellVal(a, idx), vb = cellVal(b, idx);
+      if(allNum){
+        const na = toNumeric(va), nb = toNumeric(vb);
+        if(na === null && nb === null) return 0;
+        if(na === null) return 1;          // 空值永遠排最後
+        if(nb === null) return -1;
+        return asc ? na - nb : nb - na;
+      }
+      return asc ? String(va).localeCompare(String(vb),'zh-Hant')
+                 : String(vb).localeCompare(String(va),'zh-Hant');
+    });
+    rows.forEach(r => tbody.appendChild(r));
+  }, false);
+})();
