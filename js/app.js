@@ -702,13 +702,13 @@ function renderMonitor(){
       <h4 class="mini-h" style="margin-top:16px">二、判定的三道閘門</h4>
       <table style="font-size:12px"><thead><tr><th style="width:110px">閘門</th><th>檢查什麼</th><th style="width:30%">不通過</th></tr></thead><tbody>
         <tr><td>① 曝光門檻</td><td>當期曝光是否達到最低量</td><td><b>⚪ 資料不足</b>，不判定。避免 5 次點擊變 4 次就被當成 −20%</td></tr>
-        <tr><td>② 新頁豁免</td><td>上刊是否已滿設定天數（取自分類表）</td><td><b>⚪ 豁免中</b>，不判定衰退。新文章排名爬升期本來就震盪</td></tr>
+        <tr><td>② 新頁豁免</td><td>上刊是否已滿 <b>90 天（3 個月）</b>，上刊日取自分類表</td><td><b>⚪ 豁免中</b>，不判定衰退。新文章前三個月排名還在爬升，本來就會震盪。天數可在 config 分頁改</td></tr>
         <tr><td>③ 條件計數</td><td>下表四項各自判斷，看命中幾項</td><td>依命中數分級</td></tr>
       </tbody></table>
 
       <h4 class="mini-h" style="margin-top:16px">三、四項條件</h4>
       <table style="font-size:12px"><thead><tr><th style="width:110px">條件</th><th>觸發標準</th><th style="width:34%">代表什麼</th></tr></thead><tbody>
-        <tr><td>ａ 點擊跌幅</td><td>較比較期下滑 ≥ 門檻</td><td>需求流失或被蠶食</td></tr>
+        <tr><td>ａ 點擊跌幅</td><td>較比較期下滑 ≥ 門檻</td><td>需求流失或被站內其他文章蠶食</td></tr>
         <tr><td>ｂ 排名退步</td><td>較比較期退步 &gt; 門檻名</td><td>內容過時或競爭者超車</td></tr>
         <tr><td>ｃ CTR 達成率</td><td>低於門檻</td><td>排名還在，但標題／摘要沒吸引力</td></tr>
         <tr><td>ｄ 距歷史高峰</td><td>較該文最高月下滑 ≥ 門檻</td><td>長期退燒，單看月變化看不出來</td></tr>
@@ -716,10 +716,9 @@ function renderMonitor(){
 
       <h4 class="mini-h" style="margin-top:16px">四、分級與比較期間</h4>
       <table style="font-size:12px"><thead><tr><th style="width:110px">命中項數</th><th>狀態</th><th style="width:34%">處理</th></tr></thead><tbody>
-        <tr><td>2 項以上</td><td><b style="color:#A14232">🔴 立即處理</b></td><td>本期排入工作</td></tr>
-        <tr><td>1 項</td><td><b style="color:#B8892B">🟠 需關注</b></td><td>排入下期</td></tr>
-        <tr><td>0 項但已達門檻七成</td><td><b style="color:#8A7A1E">🟡 觀察中</b></td><td>只記錄，不行動</td></tr>
-        <tr><td>0 項</td><td><b style="color:#2F6B5F">🟢 正常</b></td><td>維持現狀</td></tr>
+        <tr><td>2 項以上</td><td><b style="color:#A14232">🔴 待改善</b></td><td><b>本期唯一要動的清單</b>，依「建議動作」欄處理</td></tr>
+        <tr><td>1 項</td><td><b style="color:#B8892B">🟠 需關注</b></td><td>先不動，下期若升為待改善再處理</td></tr>
+        <tr><td>0 項</td><td><b style="color:#2F6B5F">🟢 正常</b></td><td>不需處理</td></tr>
       </tbody></table>
       <div class="cap" style="margin-top:10px;line-height:1.8">
         <b>比較期間</b>跟隨上方「檢視月份」：選 1 個月＝月對月，選 3 個月＝季對季。基準可選「上一期（等長）」或「去年同期」——房地產季節性明顯，季度檢視建議用去年同期。<br>
@@ -728,6 +727,27 @@ function renderMonitor(){
       </div>
       </div>
     </details>
+    <div class="card" style="margin-bottom:14px;padding-bottom:6px">
+      <h3 style="margin-top:0">檢視重點</h3>
+      <div class="cap">選下方「監控分群」時，對應那一列會highlight。<b>每次只處理 🔴 待改善 的清單即可。</b></div>
+      <table style="font-size:12px;margin-top:8px"><thead><tr>
+        <th style="width:130px">分群</th><th style="width:70px">建議頻次</th><th style="width:90px">比較基準</th>
+        <th style="width:26%">檢視重點</th><th>主要觀察指標</th></tr></thead>
+      <tbody id="mFocusBody">
+        <tr data-g="TOP20"><td><b>TOP20 主力文章</b></td><td>每月</td><td>上一期</td>
+          <td>主力有沒有掉下來，是全站流量的骨幹</td>
+          <td><b>穩定度</b>（高穩定度亮紅燈＝最優先）、距高峰跌幅、點擊變化</td></tr>
+        <tr data-g="SEO主打文章"><td><b>SEO 主打（9篇）</b></td><td>每月</td><td>上一期</td>
+          <td>目標關鍵字排名有沒有守住，這是刻意投資的檔案</td>
+          <td><b>平均排名、排名變化</b>、CTR 達成率（排名在但沒人點＝改標題）</td></tr>
+        <tr data-g="專家專欄"><td><b>專家專欄</b></td><td>每季</td><td>去年同期</td>
+          <td>權威內容看長期趨勢，月度波動多半是雜訊；另看 AI 有沒有引用</td>
+          <td><b>距高峰跌幅</b>、曝光趨勢，搭配第 ⑥ 分頁的 AIO 引用監測</td></tr>
+        <tr data-g="生活提案一般"><td><b>生活提案一般</b></td><td>每季</td><td>去年同期</td>
+          <td>不逐篇看，只撈異常。重點是整體健康與選題方向</td>
+          <td>待改善篇數、合計列的整體變化，搭配第 ④ 分頁的主題軸</td></tr>
+      </tbody></table>
+    </div>
     <div class="stat-row" id="mStatStrip"></div>
     <div class="controls">
       <div class="ctrl-group"><label>比較基準</label>
@@ -799,26 +819,38 @@ function renderMonitor(){
         reasons=hit;
         if(hit.length>=2) status='red';
         else if(hit.length===1) status='orange';
-        else if((dClick!=null && dClick <= -TH.clickDrop*0.7) || (dPos!=null && dPos > TH.posWorsen*0.7)) status='yellow';
         else status='green';
       }
-      let action='維持現狀';
-      if(status==='na') action='曝光不足，不判定';
-      else if(status==='exempt') action='新頁觀察期，只看成長';
-      else if(reasons.includes('peak') && reasons.includes('click')) action='全文重寫，更新法規與數據';
-      else if(reasons.includes('pos')) action='補內容、更新時效性資訊';
-      else if(reasons.includes('ctr') || scissors) action='改標題與 meta 描述';
-      else if(reasons.includes('click')) action='檢查是否被新內容蠶食';
-      else if(status==='yellow') action='列入觀察，下期再看';
+      const has = k => reasons.includes(k);
+      let action;
+      if(status==='na') action='曝光不足，本期不判定';
+      else if(status==='exempt') action='新頁觀察期，只看成長不判衰退';
+      else if(reasons.length>=3) action='文章檢視，並重新對齊搜尋意圖';
+      else if(has('pos') && has('ctr')) action='文章改寫：排名與點閱雙弱';
+      else if(has('pos') && has('click')) action='更新時效內容（法規、數據、年份）';
+      else if(has('peak') && has('pos')) action='內容過時，補充深度與最新資訊';
+      else if(has('peak') && has('click')) action='長期退燒，評估改寫或與相近主題合併';
+      else if(has('ctr') && has('click')) action='改寫標題與 meta 描述';
+      else if(has('ctr') && has('peak')) action='改寫標題，並檢查是否已失去搜尋需求';
+      else if(has('pos')) action='補內容深度，檢查競品是否超車';
+      else if(has('ctr')) action='改寫標題與 meta 描述';
+      else if(has('click')) action='檢查是否被站內其他文章蠶食';
+      else if(has('peak')) action='長期退燒，排入改版清單';
+      else if(scissors) action='曝光漲但點擊跌，改寫標題';
+      else action='維持現狀';
       return {u, cls, role, c1, i1, dClick, p1, dPos, achieve, dAchieve, peakDrop, status, action, stab: stability[u]||0};
     }).filter(r => r.c1>0 || r.i1>0);
     return {rows, cur, base};
   }
 
-  const BADGE={red:'🔴 立即處理',orange:'🟠 需關注',yellow:'🟡 觀察中',green:'🟢 正常',na:'⚪ 資料不足',exempt:'⚪ 豁免中'};
-  const COLOR={red:RUST,orange:GOLD,yellow:'#8A7A1E',green:TEAL,na:STONE,exempt:STONE};
+  const BADGE={red:'🔴 待改善',orange:'🟠 需關注',green:'🟢 正常',na:'⚪ 資料不足',exempt:'⚪ 豁免中'};
+  const COLOR={red:RUST,orange:GOLD,green:TEAL,na:STONE,exempt:STONE};
 
   function render(){
+    const fb=document.getElementById('mFocusBody');
+    if(fb) Array.prototype.forEach.call(fb.rows, tr=>{
+      tr.style.background = (tr.getAttribute('data-g')===group) ? '#EDF3F0' : '';
+    });
     const {rows, cur, base} = evaluate();
     document.getElementById('mPeriodNote').innerHTML = cur.length
       ? `當期：${cur[0]} ~ ${cur[cur.length-1]}（${cur.length}個月）　｜　比較基準：${base.length? base[0]+' ~ '+base[base.length-1] : '<b style="color:'+RUST+'">無對應期間，變化欄為空</b>'}`
@@ -829,11 +861,11 @@ function renderMonitor(){
       const n = parseInt(group.slice(3),10);
       shown = rows.slice().sort((a,b)=>b.c1-a.c1).slice(0,n);
     } else shown = rows.filter(r => r.role===group);
-    const counts={red:0,orange:0,yellow:0,green:0,na:0,exempt:0};
+    const counts={red:0,orange:0,green:0,na:0,exempt:0};
     shown.forEach(r=>counts[r.status]++);
-    document.getElementById('mStatStrip').innerHTML = ['red','orange','yellow','green','na','exempt'].map(k=>
+    document.getElementById('mStatStrip').innerHTML = ['red','orange','green','na','exempt'].map(k=>
       `<div class="stat-chip"><div class="n" style="color:${COLOR[k]}">${counts[k]}</div><div class="l">${BADGE[k]}</div></div>`).join('');
-    const ord={red:0,orange:1,yellow:2,green:3,exempt:4,na:5};
+    const ord={red:0,orange:1,green:2,exempt:3,na:4};
     let list=shown.slice();
     if(sortMode==='alert') list.sort((a,b)=>ord[a.status]-ord[b.status] || b.c1-a.c1);
     else if(sortMode==='clicks') list.sort((a,b)=>b.c1-a.c1);
@@ -844,7 +876,7 @@ function renderMonitor(){
       const dp = r.dPos==null ? '—' : `<span style="color:${r.dPos<=0?TEAL:RUST}">${r.dPos>0?'+':''}${r.dPos.toFixed(1)}</span>`;
       const ac = r.achieve==null ? '—' : `<span style="color:${r.achieve<TH.ctrAchieve?RUST:INK}">${r.achieve.toFixed(0)}%</span>` +
         (r.dAchieve==null ? '' : `<div class="url-sub" style="color:${r.dAchieve>=0?TEAL:RUST}">${r.dAchieve>=0?'+':''}${r.dAchieve.toFixed(0)}pt</div>`);
-      const ordv = {red:0,orange:1,yellow:2,green:3,exempt:4,na:5}[r.status];
+      const ordv = {red:0,orange:1,green:2,exempt:3,na:4}[r.status];
       return `<tr onclick='openMonitorModal(${JSON.stringify(r.u)})'>
         <td data-sort="${ordv}"><span class="dot ${r.status==='na'||r.status==='exempt'?'green':r.status}" style="background:${COLOR[r.status]}"></span></td>
         <td data-sort="${(getArticleTitle(r.u)||'').replace(/"/g,'')}"><b>${getArticleTitle(r.u)}</b><div class="url-sub">${r.u}</div></td>
