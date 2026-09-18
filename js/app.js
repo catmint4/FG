@@ -685,26 +685,47 @@ function renderMonitor(){
     ${panelHead('內容健康監控', '用一致的規則分出「該立刻改版 / 該觀察 / 資料不足 / 正常」，並直接給出建議動作',
       'Google Search Console ＋ 文章對應分類表', '期間跟隨上方「檢視月份」；門檻可在試算表 config 分頁調整')}
     <details class="card" style="margin-bottom:14px;background:#FAF8F4">
-      <summary style="cursor:pointer;font-weight:700;font-size:13px;list-style:none">▸ 判定規則說明（點開）</summary>
-      <div class="cap" style="line-height:1.85;margin-top:10px">
-        每篇文章依序通過三道閘門，前兩道先把「不該判定的」排除掉，剩下的才計算觸發了幾項條件。<br>
-        <b>閘門①　曝光門檻</b>：期間合計曝光低於門檻 → <b>⚪ 資料不足</b>。避免 5 次點擊掉到 4 次就被當成 −20% 的誤判。<br>
-        <b>閘門②　新頁豁免</b>：上刊未滿設定天數 → <b>⚪ 豁免中</b>。新文章的排名爬升期本來就會震盪，不判定衰退。上刊日取自分類表。<br>
-        <b>閘門③　條件計數</b>：以下四項各自獨立判斷，命中越多越嚴重。
-        <div style="margin:6px 0 6px 14px">
-          ａ<b>點擊跌幅</b>：本期點擊較比較期下滑 ≥ 門檻<br>
-          ｂ<b>排名退步</b>：平均排名較比較期退步 &gt; 門檻名（用曝光加權計算）<br>
-          ｃ<b>CTR 達成率</b>：實際 CTR ÷ <u>本站同排名區間的中位數 CTR</u> &lt; 門檻。<br>
-          　　例：某文排第 8 名、CTR 2.4%，而本站第 8 名的中位數是 3.0% → 達成率 80%。100% 代表「跟同排名的其他文章表現一樣」。<br>
-          　　為什麼不用絕對 CTR：第 3 名本來就該有 10%、第 8 名只有 3%，用絕對值比會把排名後段的文章全部誤殺。<br>
-          　　欄位下方的小字是<b>達成率較比較期的增減</b>。這個數字很關鍵——它把排名變動的影響剔除了，<u>達成率下滑代表標題或摘要真的失去吸引力</u>，而不是因為掉名次。<br>
-          ｄ<b>距歷史高峰</b>：本期點擊較該文歷史最高月下滑 ≥ 門檻
-        </div>
-        <b>分級</b>：命中 2 項以上 → <b style="color:#A14232">🔴 立即處理</b>　｜　命中 1 項 → <b style="color:#B8892B">🟠 需關注</b>　｜　未命中但已達門檻七成 → <b style="color:#8A7A1E">🟡 觀察中</b>　｜　皆未命中 → <b style="color:#2F6B5F">🟢 正常</b><br>
-        <b>比較期間</b>跟隨上方「檢視月份」。選 1 個月＝月對月，選 3 個月＝季對季。基準可選「上一期（等長）」或「去年同期」——房地產有明顯季節性，季度檢視建議用去年同期。<br>
-        <b>穩定度</b>＝該文在全部 ${months.length} 個月當中、進入當月點擊 TOP20 的比例。100% 代表長期穩居前段；原本穩定度高但現在掉出榜單，是最該立刻查的訊號。<br>
-        <b>監控分群</b>：TOP20/30/50 是依<u>當期點擊</u>動態排名，會隨檢視月份改變；SEO主打／專家專欄／生活提案一般則是固定的內容角色。<br>
-        <b>門檻</b>預設值來自試算表 config 分頁，下方滑桿只是臨時試算，重新整理會回到試算表的設定。
+      <summary style="cursor:pointer;font-weight:700;font-size:13px;list-style:none">▸ 欄位說明與判定規則（點開）</summary>
+      <div style="margin-top:12px">
+
+      <h4 class="mini-h">一、欄位怎麼看</h4>
+      <table style="font-size:12px"><thead><tr><th style="width:110px">欄位</th><th>意思</th><th style="width:34%">怎麼判讀</th></tr></thead><tbody>
+        <tr><td><b>當期點擊</b></td><td>檢視月份區間的自然搜尋點擊加總</td><td>—</td></tr>
+        <tr><td><b>變化</b></td><td>當期點擊 vs 比較期點擊</td><td>▼ 是下滑、▲ 是成長</td></tr>
+        <tr><td><b>平均排名</b></td><td>Google 平均排名，用曝光加權</td><td>數字越小越好</td></tr>
+        <tr><td><b>排名變化</b></td><td>當期排名減比較期排名</td><td><b>正數＝退步</b>（例如 +4.2 是從第 5 名退到第 9.2 名）</td></tr>
+        <tr><td><b>CTR達成率</b></td><td>這篇的 CTR ÷ 本站同排名區間的中位數 CTR</td><td>100%＝跟同排名的其他文章一樣。<b>低於 70% 才是問題</b>，高於 100% 是好事</td></tr>
+        <tr><td><b>（下方 pt）</b></td><td>達成率較比較期的增減，單位是百分點</td><td><b>−82pt 就是達成率掉了 82 個百分點</b>，例如從 247% 掉到 165%</td></tr>
+        <tr><td><b>穩定度</b></td><td>這篇在全部歷史月份中，進入「當月點擊 TOP20」的比例</td><td>100%＝每個月都在榜上。<b>高穩定度卻亮紅燈＝最該優先處理</b></td></tr>
+      </tbody></table>
+
+      <h4 class="mini-h" style="margin-top:16px">二、判定的三道閘門</h4>
+      <table style="font-size:12px"><thead><tr><th style="width:110px">閘門</th><th>檢查什麼</th><th style="width:30%">不通過</th></tr></thead><tbody>
+        <tr><td>① 曝光門檻</td><td>當期曝光是否達到最低量</td><td><b>⚪ 資料不足</b>，不判定。避免 5 次點擊變 4 次就被當成 −20%</td></tr>
+        <tr><td>② 新頁豁免</td><td>上刊是否已滿設定天數（取自分類表）</td><td><b>⚪ 豁免中</b>，不判定衰退。新文章排名爬升期本來就震盪</td></tr>
+        <tr><td>③ 條件計數</td><td>下表四項各自判斷，看命中幾項</td><td>依命中數分級</td></tr>
+      </tbody></table>
+
+      <h4 class="mini-h" style="margin-top:16px">三、四項條件</h4>
+      <table style="font-size:12px"><thead><tr><th style="width:110px">條件</th><th>觸發標準</th><th style="width:34%">代表什麼</th></tr></thead><tbody>
+        <tr><td>ａ 點擊跌幅</td><td>較比較期下滑 ≥ 門檻</td><td>需求流失或被蠶食</td></tr>
+        <tr><td>ｂ 排名退步</td><td>較比較期退步 &gt; 門檻名</td><td>內容過時或競爭者超車</td></tr>
+        <tr><td>ｃ CTR 達成率</td><td>低於門檻</td><td>排名還在，但標題／摘要沒吸引力</td></tr>
+        <tr><td>ｄ 距歷史高峰</td><td>較該文最高月下滑 ≥ 門檻</td><td>長期退燒，單看月變化看不出來</td></tr>
+      </tbody></table>
+
+      <h4 class="mini-h" style="margin-top:16px">四、分級與比較期間</h4>
+      <table style="font-size:12px"><thead><tr><th style="width:110px">命中項數</th><th>狀態</th><th style="width:34%">處理</th></tr></thead><tbody>
+        <tr><td>2 項以上</td><td><b style="color:#A14232">🔴 立即處理</b></td><td>本期排入工作</td></tr>
+        <tr><td>1 項</td><td><b style="color:#B8892B">🟠 需關注</b></td><td>排入下期</td></tr>
+        <tr><td>0 項但已達門檻七成</td><td><b style="color:#8A7A1E">🟡 觀察中</b></td><td>只記錄，不行動</td></tr>
+        <tr><td>0 項</td><td><b style="color:#2F6B5F">🟢 正常</b></td><td>維持現狀</td></tr>
+      </tbody></table>
+      <div class="cap" style="margin-top:10px;line-height:1.8">
+        <b>比較期間</b>跟隨上方「檢視月份」：選 1 個月＝月對月，選 3 個月＝季對季。基準可選「上一期（等長）」或「去年同期」——房地產季節性明顯，季度檢視建議用去年同期。<br>
+        <b>監控分群</b>：TOP20/30/50 依<u>當期點擊</u>動態排名，會隨檢視月份改變；SEO主打／專家專欄／生活提案一般則是固定的內容角色。<br>
+        <b>門檻</b>預設值來自試算表 config 分頁，下方滑桿只是臨時試算，重新整理會回到試算表設定。
+      </div>
       </div>
     </details>
     <div class="stat-row" id="mStatStrip"></div>
@@ -727,8 +748,17 @@ function renderMonitor(){
         <select id="sortSel"><option value="alert">警示等級</option><option value="clicks">當期點擊</option><option value="drop">跌幅</option></select></div>
     </div>
     <div class="panel-desc" id="mPeriodNote" style="margin:8px 0 12px"></div>
-    <table><thead><tr><th style="width:20px"></th><th>文章</th><th>分類</th><th class="num">當期點擊</th><th class="num">變化</th>
-      <th class="num">平均排名</th><th class="num">排名變化</th><th class="num">CTR達成率</th><th class="num">穩定度</th><th>建議動作</th></tr></thead>
+    <table><thead><tr>
+      <th style="width:20px" title="警示等級，點擊可依嚴重度排序"></th>
+      <th title="點列可看該文的逐月點擊與排名趨勢">文章</th>
+      <th title="分類表的大分類／中分類">分類</th>
+      <th class="num" title="檢視月份區間的自然搜尋點擊加總">當期點擊</th>
+      <th class="num" title="當期點擊 vs 比較期點擊，▼為下滑">變化</th>
+      <th class="num" title="Google 平均排名，用曝光加權計算，數字越小越好">平均排名</th>
+      <th class="num" title="正數代表排名退步，例如 +4.2 是從第5名退到第9.2名">排名變化</th>
+      <th class="num" title="實際CTR ÷ 本站同排名區間的中位數CTR。100%=與同排名文章表現相同，低於70%才是問題。下方 pt 為較比較期的增減百分點">CTR達成率</th>
+      <th class="num" title="在全部歷史月份中進入當月點擊TOP20的比例。高穩定度卻亮紅燈最該優先處理">穩定度</th>
+      <th title="依觸發的條件自動給出建議">建議動作</th></tr></thead>
     <tbody id="mTableBody"></tbody><tfoot id="mTableFoot"></tfoot></table>`;
 
   function evaluate(){
