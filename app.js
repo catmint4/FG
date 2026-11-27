@@ -67,10 +67,40 @@ function renderEmpty(id, title, desc, needs){
     <div class="empty-state"><div class="icon">🔲</div><h4>${desc}</h4>
     ${(needs||[]).map(n=>`<span class="need-tag">${n}</span>`).join('')}</div>`;
 }
+/* 頁籤標題 → sources 分頁的「分頁／資料表」值，用來帶出撈法 */
+const SRC_KEY = {
+  '總覽':'gsc_page', '流量與來源':'traffic_source', '進站意圖：關鍵字':'gsc_query',
+  '內容成效：文章與分類':'pageview', '內容健康監控':'gsc_page',
+  '內容有沒有被AI引用':'ai_assistant', '導流成效：內容→建案':'pageview',
+  '流量有沒有變成名單':'utm_buttons', '單一建案表現':'pageview', '自媒體':'social'
+};
+function srcRow(key){
+  if(!window.SOURCES || !key) return null;
+  return window.SOURCES.find(r => String(r['分頁／資料表']||'').split('/').map(x=>x.trim()).includes(key)) || null;
+}
+function openSrcModal(key){
+  const r = srcRow(key); if(!r) return;
+  const row = (k,v) => v ? `<tr><td style="white-space:nowrap;color:var(--ink-soft)">${k}</td><td>${String(v).replace(/</g,'&lt;')}</td></tr>` : '';
+  document.getElementById('modalContent').innerHTML = `
+    <div class="modal-head"><div><h2>資料怎麼撈：${r['分頁／資料表']||key}</h2>
+    <div class="modal-meta">照這張表操作就能重現這一頁的數字</div></div>
+    <button class="modal-close" onclick="document.getElementById('overlay').classList.remove('show')">&times;</button></div>
+    <table style="font-size:12.5px">
+      ${row('來源系統', r['來源系統'])}${row('怎麼撈', r['怎麼撈（照這個做就對）'])}
+      ${row('維度', r['維度'])}${row('指標', r['指標'])}${row('篩選條件', r['篩選條件'])}
+      ${row('涵蓋期間', r['涵蓋期間'])}${row('更新頻率', r['更新頻率'])}${row('負責人', r['負責人'])}
+      ${r['備註與已知問題'] ? `<tr><td style="white-space:nowrap;color:var(--ink-soft)">備註</td><td style="color:#A14232">${String(r['備註與已知問題']).replace(/</g,'&lt;')}</td></tr>` : ''}
+    </table>`;
+  document.getElementById('overlay').classList.add('show');
+}
 function panelHead(title, purpose, source, note){
+  const key = SRC_KEY[title];
+  const r = key ? srcRow(key) : null;
+  const link = r ? ` 　<a href="javascript:void(0)" onclick="openSrcModal('${key}')" style="color:var(--teal,#2F6B5F);text-decoration:underline">撈法與欄位 ⓘ</a>` : '';
+  const freq = r && r['更新頻率'] ? `　｜　更新：${r['更新頻率']}` : '';
   return `<div class="panel-head"><h2>${title}</h2>
     <div class="panel-q">目的：${purpose}</div>
-    <div class="panel-desc">資料來源：${source}${note ? '　｜　'+note : ''}</div></div>`;
+    <div class="panel-desc">資料來源：${source}${note ? '　｜　'+note : ''}${freq}${link}</div></div>`;
 }
 function monthsInRange(start, end){ return ALL_MONTHS.filter(m => m >= start && m <= end); }
 function monthLabel(m){ return m.slice(2).replace('-','/'); }
@@ -125,16 +155,24 @@ async function main(){
   buildShell();
   const [pageviewByMonth, trafficByMonth, gscQueryByMonth, gscPageByMonth, aiAssistByMonth,
          aioPagesByMonth, aioDailyByMonth, utmByMonth, bannerAdsByMonth, classificationRaw,
-         configRaw] = await Promise.all([
+         configRaw, sourcesRaw, pvOrgByMonth, gscAiByMonth, aiRefByMonth] = await Promise.all([
     loadMonthlyFolder('pageview'), loadMonthlyFolder('traffic-source'), loadMonthlyFolder('gsc-query'),
     loadMonthlyFolder('gsc-page'), loadMonthlyFolder('ai-assistant'),
     loadMonthlyFolder('gsc-aio', m => `${m}-pages.csv`), loadMonthlyFolder('gsc-aio', m => `${m}-daily.csv`),
     loadMonthlyFolder('utm-buttons'), loadMonthlyFolder('banner-ads'), loadSingleFile('data/classification/latest.csv'),
-    (typeof loadConfig === 'function' ? loadConfig() : Promise.resolve({}))
+    (typeof loadConfig === 'function' ? loadConfig() : Promise.resolve({})),
+    (typeof loadSources === 'function' ? loadSources() : Promise.resolve([])),
+    loadMonthlyFolder('pageview-organic'),
+    loadMonthlyFolder('gsc-ai'),
+    loadMonthlyFolder('ai-referral')
   ]);
   DATA = { pageview:pageviewByMonth, traffic:trafficByMonth, kw:gscQueryByMonth, seo:gscPageByMonth,
             ai:aiAssistByMonth, aioPages:aioPagesByMonth, aioDaily:aioDailyByMonth, utm:utmByMonth, bannerAds:bannerAdsByMonth };
   window.CONFIG = configRaw || {};
+  window.SOURCES = Array.isArray(sourcesRaw) ? sourcesRaw : [];
+  DATA.pvOrg = pvOrgByMonth || {};
+  DATA.gscAi = gscAiByMonth || {};
+  DATA.aiRef = aiRefByMonth || {};
   CLS_MAP = buildClassificationMap(classificationRaw);
 
   // 建立全站標題對照表（供文章連結顯示標題用）
@@ -612,13 +650,17 @@ function renderMonitor(){
   const C = (typeof CONFIG === 'object' && CONFIG) ? CONFIG : {};
   const num = (k, d) => { const v = parseFloat(C[k]); return isNaN(v) ? d : v; };
   let TH = {
-    clickDrop: num('點擊跌幅門檻%', 20),      // 點擊較比較期下滑超過此值
-    posWorsen: num('排名退步門檻', 3),         // 平均排名退步超過此名次
-    minImp:    num('最低曝光門檻_月', 300),     // 當期月均曝光低於此值不判定
-    ctrAchieve:num('CTR達成率門檻%', 70),      // 實際CTR ÷ 該排名期望CTR
-    exemptDays:num('新頁豁免天數', 90),
-    peakDrop:  num('距高峰跌幅門檻%', 40)
+    clickDrop: num('點擊跌幅門檻%', 30),
+    posWorsen: num('排名退步門檻', 5),
+    minImp:    num('最低曝光門檻_月', 500),
+    ctrAchieve:num('CTR達成率門檻%', 60),
+    exemptDays:num('新頁豁免天數', 60),
+    peakDrop:  num('距高峰跌幅門檻%', 50),
+    capN:      num('每期處理上限篇數', 15),
+    engageDrop:num('參與率下滑門檻pt', 10),
+    minSess:   num('站內最低工作階段', 100)
   };
+  let peakMode = (C['距高峰基準']==='絕對') ? 'abs' : 'rel';
 
   /* --- 建立 url × month 的序列 --- */
   const S = {};
@@ -657,11 +699,34 @@ function renderMonitor(){
     return pos => { if(!pos) return null; const b=Math.min(20,Math.max(1,Math.round(pos))); return exp[b]||null; };
   }
 
-  /* --- 每月 TOP20 名單 → 穩定度（上榜期數 ÷ 總期數） --- */
+  /* --- 站內成效（pageview_organic）：自然進站後的參與與轉換 --- */
+  const ON = {};
+  const CVE = ['點擊預約賞屋','點擊Line','點擊客服Omi','點擊來電0800'];
+  Object.keys(DATA.pvOrg || {}).forEach(m => {
+    (DATA.pvOrg[m].data || []).forEach(r => {
+      const u = normUrl(r['到達網頁']); if(!u) return;
+      const o = (ON[u] = ON[u] || {});
+      const s = toNum(r['工作階段']);
+      let er = toNum(r['參與度']);            // GA4 匯出的參與度是比率(0~1)
+      if(er > 1) er = er / Math.max(1, s);     // 若來源改成次數，退回算比率
+      const cv = CVE.reduce((t,k)=>t+toNum(r[k]),0);
+      const ex = toNum(r['預約賞屋曝光']);
+      const p = (o[m] = o[m] || {s:0,e:0,cv:0,ex:0});
+      p.s+=s; p.e+=er*s; p.cv+=cv; p.ex+=ex;   // e 存成「參與工作階段數」，加權用
+    });
+  });
+  const onSum = (u, ms, k) => ms.reduce((t,m)=>t+((ON[u]&&ON[u][m]&&ON[u][m][k])||0),0);
+
+  /* --- 全站每月總點擊：把站層級的漲跌從個別文章判定中扣掉 --- */
+  const siteTotal = {};
+  months.forEach(m=>{ siteTotal[m] = Object.keys(S).reduce((t,u)=>t+(S[u].c[m]||0),0); });
+
+  /* --- 每月 TOP30 名單 → 穩定度（上榜期數 ÷ 總期數） --- */
+  const STAB_N = 30;
   const top20Sets = {};
   months.forEach(m=>{
     const arr = Object.keys(S).map(u=>({u, c:S[u].c[m]||0})).filter(x=>x.c>0)
-                  .sort((a,b)=>b.c-a.c).slice(0,20).map(x=>x.u);
+                  .sort((a,b)=>b.c-a.c).slice(0,STAB_N).map(x=>x.u);
     top20Sets[m] = new Set(arr);
   });
   const stability = {};
@@ -679,7 +744,7 @@ function renderMonitor(){
     return Math.round((new Date(curEnd+'-28') - new Date(base)) / 86400000);
   }
 
-  let basis='prev', group='all', sortMode='alert';
+  let basis='prev', group='all', sortMode='lost';
 
   p.innerHTML = `
     ${panelHead('內容健康監控', '用一致的規則分出「該立刻改版 / 該觀察 / 資料不足 / 正常」，並直接給出建議動作',
@@ -696,22 +761,24 @@ function renderMonitor(){
         <tr><td><b>排名變化</b></td><td>當期排名減比較期排名</td><td><b>正數＝退步</b>（例如 +4.2 是從第 5 名退到第 9.2 名）</td></tr>
         <tr><td><b>CTR達成率</b></td><td>這篇的 CTR ÷ 本站同排名區間的中位數 CTR</td><td>100%＝跟同排名的其他文章一樣。<b>低於 70% 才是問題</b>，高於 100% 是好事</td></tr>
         <tr><td><b>（下方 pt）</b></td><td>達成率較比較期的增減，單位是百分點</td><td><b>−82pt 就是達成率掉了 82 個百分點</b>，例如從 247% 掉到 165%</td></tr>
-        <tr><td><b>穩定度</b></td><td>這篇在全部歷史月份中，進入「當月點擊 TOP20」的比例</td><td>100%＝每個月都在榜上。<b>高穩定度卻亮紅燈＝最該優先處理</b></td></tr>
+        <tr><td><b>穩定度</b></td><td>這篇在全部歷史月份中，進入「當月點擊 TOP30」的比例</td><td>100%＝每個月都在榜上。<b>高穩定度卻亮紅燈＝最該優先處理</b></td></tr>
       </tbody></table>
 
       <h4 class="mini-h" style="margin-top:16px">二、判定的三道閘門</h4>
       <table style="font-size:12px"><thead><tr><th style="width:110px">閘門</th><th>檢查什麼</th><th style="width:30%">不通過</th></tr></thead><tbody>
         <tr><td>① 曝光門檻</td><td>當期曝光是否達到最低量</td><td><b>⚪ 資料不足</b>，不判定。避免 5 次點擊變 4 次就被當成 −20%</td></tr>
-        <tr><td>② 新頁豁免</td><td>上刊是否已滿 <b>90 天（3 個月）</b>，上刊日取自分類表</td><td><b>⚪ 豁免中</b>，不判定衰退。新文章前三個月排名還在爬升，本來就會震盪。天數可在 config 分頁改</td></tr>
+        <tr><td>② 新頁豁免</td><td>上刊是否已滿 <b>60 天（2 個月）</b>，上刊日取自分類表</td><td><b>⚪ 豁免中</b>，不判定衰退。新文章前兩個月排名還在爬升，本來就會震盪。天數可在 config 分頁改</td></tr>
         <tr><td>③ 條件計數</td><td>下表四項各自判斷，看命中幾項</td><td>依命中數分級</td></tr>
       </tbody></table>
 
-      <h4 class="mini-h" style="margin-top:16px">三、四項條件</h4>
+      <h4 class="mini-h" style="margin-top:16px">三、六項條件（ａ~ｄ站外搜尋表現，ｅ~ｆ站內成效）</h4>
       <table style="font-size:12px"><thead><tr><th style="width:110px">條件</th><th>觸發標準</th><th style="width:34%">代表什麼</th></tr></thead><tbody>
-        <tr><td>ａ 點擊跌幅</td><td>較比較期下滑 ≥ 門檻</td><td>需求流失或被蠶食</td></tr>
+        <tr><td>ａ 點擊跌幅</td><td>較比較期下滑 ≥ 門檻</td><td>需求流失或被站內其他文章蠶食</td></tr>
         <tr><td>ｂ 排名退步</td><td>較比較期退步 &gt; 門檻名</td><td>內容過時或競爭者超車</td></tr>
         <tr><td>ｃ CTR 達成率</td><td>低於門檻</td><td>排名還在，但標題／摘要沒吸引力</td></tr>
-        <tr><td>ｄ 距歷史高峰</td><td>較該文最高月下滑 ≥ 門檻</td><td>長期退燒，單看月變化看不出來</td></tr>
+        <tr><td>ｅ 參與率下滑</td><td>自然進站後的參與率較比較期掉超過 10 個百分點</td><td>內容前段沒抓住人，或頁面載入有問題</td></tr>
+        <tr><td>ｆ 零站內互動</td><td>自然工作階段 ≥ 100 但完全沒有預約賞屋／LINE／客服／來電</td><td>流量陷阱：有人看但完全沒動作，缺 CTA</td></tr>
+        <tr><td>ｄ 距歷史高峰</td><td>較該文最高月下滑 ≥ 門檻（相對全站模式已先扣掉全站同期跌幅）</td><td>長期退燒，單看月變化看不出來</td></tr>
       </tbody></table>
 
       <h4 class="mini-h" style="margin-top:16px">四、分級與比較期間</h4>
@@ -722,7 +789,10 @@ function renderMonitor(){
       </tbody></table>
       <div class="cap" style="margin-top:10px;line-height:1.8">
         <b>比較期間</b>跟隨上方「檢視月份」：選 1 個月＝月對月，選 3 個月＝季對季。基準可選「上一期（等長）」或「去年同期」——房地產季節性明顯，季度檢視建議用去年同期。<br>
-        <b>監控分群</b>：TOP20/30/50 依<u>當期點擊</u>動態排名，會隨檢視月份改變；SEO主打／專家專欄／生活提案一般則是固定的內容角色。<br>
+        <b>監控分群</b>：TOP30/20/50 依<u>當期點擊</u>動態排名，會隨檢視月份改變；SEO主打／專家專欄／生活提案一般則是固定的內容角色。<br>
+        <b>距高峰基準</b>建議用「相對全站」：先扣掉全站同期的漲跌，再看這篇<u>比全站多跌了多少</u>。全站流量整體下滑時，用絕對跌幅會讓幾乎每篇都亮紅燈。<br>
+        <b>★ 本期優先</b>：待改善篇數再多，也只有損失點擊最多的前 N 篇會標星號。<u>每期只做這 N 篇</u>，其餘下期再說。N 可用「本期處理上限」調整。<br>
+        <b>損失點擊</b>＝相對比較期少掉的點擊數。用它排序等於<u>依實際流量損失決定優先序</u>，而不是依跌幅百分比——小文章跌 80% 可能只少 20 次點擊。<br>
         <b>門檻</b>預設值來自試算表 config 分頁，下方滑桿只是臨時試算，重新整理會回到試算表設定。
       </div>
       </div>
@@ -734,14 +804,14 @@ function renderMonitor(){
         <th style="width:130px">分群</th><th style="width:70px">建議頻次</th><th style="width:90px">比較基準</th>
         <th style="width:26%">檢視重點</th><th>主要觀察指標</th></tr></thead>
       <tbody id="mFocusBody">
-        <tr data-g="TOP20"><td><b>TOP20 主力文章</b></td><td>每月</td><td>上一期</td>
+        <tr data-g="TOP30"><td><b>TOP30 主力文章</b></td><td>每月</td><td>上一期</td>
           <td>主力有沒有掉下來，是全站流量的骨幹</td>
           <td><b>穩定度</b>（高穩定度亮紅燈＝最優先）、距高峰跌幅、點擊變化</td></tr>
-        <tr data-g="SEO主打文章"><td><b>SEO 主打（9篇）</b></td><td>每月</td><td>上一期</td>
-          <td>目標關鍵字排名有沒有守住，這是刻意投資的檔案</td>
+        <tr data-g="SEO主打文章"><td><b>SEO 主打（9篇）</b></td><td>每月<br><span style="color:#A14232">新上線3個月內每2週</span></td><td>上一期</td>
+          <td>目標關鍵字排名有沒有守住，這是刻意投資的檔案；新上線期要盯排名爬升</td>
           <td><b>平均排名、排名變化</b>、CTR 達成率（排名在但沒人點＝改標題）</td></tr>
-        <tr data-g="專家專欄"><td><b>專家專欄</b></td><td>每季</td><td>去年同期</td>
-          <td>權威內容看長期趨勢，月度波動多半是雜訊；另看 AI 有沒有引用</td>
+        <tr data-g="專家專欄"><td><b>專家專欄</b></td><td>每兩個月</td><td>去年同期</td>
+          <td>權威內容看長期趨勢，單月波動多半是雜訊；另看 AI 有沒有引用</td>
           <td><b>距高峰跌幅</b>、曝光趨勢，搭配第 ⑥ 分頁的 AIO 引用監測</td></tr>
         <tr data-g="生活提案一般"><td><b>生活提案一般</b></td><td>每季</td><td>去年同期</td>
           <td>不逐篇看，只撈異常。重點是整體健康與選題方向</td>
@@ -755,8 +825,8 @@ function renderMonitor(){
       <div class="ctrl-group"><label>監控分群</label>
         <select id="groupSel">
           <option value="all">全部文章</option>
-          <option value="TOP20">TOP20（當期點擊前20名）</option>
-          <option value="TOP30">TOP30</option>
+          <option value="TOP30">TOP30 主力（當期點擊前30名）</option>
+          <option value="TOP20">TOP20</option>
           <option value="TOP50">TOP50</option>
           <option value="SEO主打文章">SEO主打（9篇）</option>
           <option value="專家專欄">專家專欄</option>
@@ -764,8 +834,11 @@ function renderMonitor(){
         </select></div>
       <div class="ctrl-group"><label>點擊跌幅門檻</label><div class="row"><input type="range" id="thClick" min="5" max="60" value="${TH.clickDrop}"><span class="ctrl-val" id="thClickV">${TH.clickDrop}%</span></div></div>
       <div class="ctrl-group"><label>最低曝光門檻（期間合計）</label><div class="row"><input type="range" id="thImp" min="0" max="3000" step="50" value="${TH.minImp}"><span class="ctrl-val" id="thImpV">${TH.minImp}</span></div></div>
+      <div class="ctrl-group"><label>距高峰基準</label>
+        <select id="peakSel"><option value="rel">相對全站（建議）</option><option value="abs">絕對跌幅</option></select></div>
+      <div class="ctrl-group"><label>本期處理上限</label><div class="row"><input type="range" id="thCap" min="5" max="50" step="5" value="${TH.capN}"><span class="ctrl-val" id="thCapV">${TH.capN}篇</span></div></div>
       <div class="ctrl-group"><label>排序依據</label>
-        <select id="sortSel"><option value="alert">警示等級</option><option value="clicks">當期點擊</option><option value="drop">跌幅</option></select></div>
+        <select id="sortSel"><option value="lost">損失點擊（建議）</option><option value="alert">警示等級</option><option value="clicks">當期點擊</option><option value="drop">跌幅</option></select></div>
     </div>
     <div class="panel-desc" id="mPeriodNote" style="margin:8px 0 12px"></div>
     <table><thead><tr>
@@ -777,7 +850,9 @@ function renderMonitor(){
       <th class="num" title="Google 平均排名，用曝光加權計算，數字越小越好">平均排名</th>
       <th class="num" title="正數代表排名退步，例如 +4.2 是從第5名退到第9.2名">排名變化</th>
       <th class="num" title="實際CTR ÷ 本站同排名區間的中位數CTR。100%=與同排名文章表現相同，低於70%才是問題。下方 pt 為較比較期的增減百分點">CTR達成率</th>
-      <th class="num" title="在全部歷史月份中進入當月點擊TOP20的比例。高穩定度卻亮紅燈最該優先處理">穩定度</th>
+      <th class="num" title="在全部歷史月份中進入當月點擊TOP30的比例。高穩定度卻亮紅燈最該優先處理">穩定度</th>
+      <th class="num" title="自然搜尋進站後的參與率＝參與度÷工作階段，下方為較比較期的增減">站內參與率</th>
+      <th class="num" title="每千個自然工作階段產生的站內互動（預約賞屋、LINE、客服、來電、預約曝光）">每千階段互動</th>
       <th title="依觸發的條件自動給出建議">建議動作</th></tr></thead>
     <tbody id="mTableBody"></tbody><tfoot id="mTableFoot"></tfoot></table>`;
 
@@ -802,9 +877,25 @@ function renderMonitor(){
       const dAchieve = (achieve!=null && achieve0!=null) ? achieve-achieve0 : null;
       const dClick = (c0>0) ? (c1-c0)/c0*100 : null;
       const dPos = (p1!=null && p0!=null) ? p1-p0 : null;          // 正=退步
-      const peak = Math.max(0, ...months.map(m=>(S[u].c[m]||0)));
-      const peakDrop = peak>0 ? (peak-c1)/peak*100 : 0;
+      let peak=0, peakM=null;
+      months.forEach(m=>{ const v=S[u].c[m]||0; if(v>peak){peak=v;peakM=m;} });
+      const perMonthNow = c1/Math.max(1,cur.length);
+      const siteNow = cur.reduce((t,m)=>t+(siteTotal[m]||0),0)/Math.max(1,cur.length);
+      const siteAtPeak = peakM ? (siteTotal[peakM]||0) : 0;
+      const expectFromPeak = (peakMode==='rel' && siteAtPeak>0) ? peak*(siteNow/siteAtPeak) : peak;
+      const peakDrop = expectFromPeak>0 ? Math.max(0,(expectFromPeak-perMonthNow)/expectFromPeak*100) : 0;
+      const lost = (c0>0 && c1<c0) ? (c0-c1) : (expectFromPeak>perMonthNow ? (expectFromPeak-perMonthNow)*cur.length : 0);
       const age = ageDays(u, curEnd);
+      // 站內成效：參與率與每千階段互動
+      const os1=onSum(u,cur,'s'), oe1=onSum(u,cur,'e'), oc1=onSum(u,cur,'cv'), ox1=onSum(u,cur,'ex');
+      const os0=onSum(u,base,'s'), oe0=onSum(u,base,'e'), oc0=onSum(u,base,'cv');
+      const engage  = os1>0 ? oe1/os1*100 : null;
+      const engage0 = os0>0 ? oe0/os0*100 : null;
+      const dEngage = (engage!=null&&engage0!=null) ? engage-engage0 : null;
+      const cvr  = os1>0 ? (oc1+ox1)/os1*1000 : null;   // 每千階段站內互動（含預約曝光）
+      const cvr0 = os0>0 ? oc0/os0*1000 : null;
+      const engageDrop = (dEngage!=null && dEngage <= -TH.engageDrop);
+      const noOnsite = (os1>=TH.minSess && (oc1+ox1)===0);
       const scissors = (i0>0) ? ((i1-i0)/i0*100 > 0 && dClick!=null && dClick < -10) : false;
 
       let status, reasons=[];
@@ -816,6 +907,8 @@ function renderMonitor(){
         if(dPos!=null && dPos > TH.posWorsen) hit.push('pos');
         if(achieve!=null && achieve < TH.ctrAchieve) hit.push('ctr');
         if(peakDrop >= TH.peakDrop) hit.push('peak');
+        if(engageDrop) hit.push('engage');
+        if(noOnsite) hit.push('noconv');
         reasons=hit;
         if(hit.length>=2) status='red';
         else if(hit.length===1) status='orange';
@@ -825,20 +918,22 @@ function renderMonitor(){
       let action;
       if(status==='na') action='曝光不足，本期不判定';
       else if(status==='exempt') action='新頁觀察期，只看成長不判衰退';
-      else if(reasons.length>=3) action='全文重寫並重新對齊搜尋意圖';
-      else if(has('pos') && has('ctr')) action='全文重寫：排名與點閱雙弱';
+      else if(reasons.length>=3) action='文章檢視，並重新對齊搜尋意圖';
+      else if(has('pos') && has('ctr')) action='文章改寫：排名與點閱雙弱';
       else if(has('pos') && has('click')) action='更新時效內容（法規、數據、年份）';
       else if(has('peak') && has('pos')) action='內容過時，補充深度與最新資訊';
-      else if(has('peak') && has('click')) action='長期退燒，評估重寫或與相近主題合併';
+      else if(has('peak') && has('click')) action='長期退燒，評估改寫或與相近主題合併';
       else if(has('ctr') && has('click')) action='改寫標題與 meta 描述';
       else if(has('ctr') && has('peak')) action='改寫標題，並檢查是否已失去搜尋需求';
       else if(has('pos')) action='補內容深度，檢查競品是否超車';
       else if(has('ctr')) action='改寫標題與 meta 描述';
       else if(has('click')) action='檢查是否被站內其他文章蠶食';
       else if(has('peak')) action='長期退燒，排入改版清單';
+      else if(has('noconv')) action='有自然流量但零站內互動，補 CTA 與在地建案推薦';
+      else if(has('engage')) action='參與率下滑，檢查內容前段與頁面載入';
       else if(scissors) action='曝光漲但點擊跌，改寫標題';
       else action='維持現狀';
-      return {u, cls, role, c1, i1, dClick, p1, dPos, achieve, dAchieve, peakDrop, status, action, stab: stability[u]||0};
+      return {u, cls, role, c1, i1, dClick, p1, dPos, achieve, dAchieve, peakDrop, lost:Math.round(lost), status, action, stab: stability[u]||0, os1, engage, dEngage, cvr};
     }).filter(r => r.c1>0 || r.i1>0);
     return {rows, cur, base};
   }
@@ -855,6 +950,10 @@ function renderMonitor(){
     document.getElementById('mPeriodNote').innerHTML = cur.length
       ? `當期：${cur[0]} ~ ${cur[cur.length-1]}（${cur.length}個月）　｜　比較基準：${base.length? base[0]+' ~ '+base[base.length-1] : '<b style="color:'+RUST+'">無對應期間，變化欄為空</b>'}`
       : '請於上方選擇檢視月份';
+    const reds = rows.filter(r=>r.status==='red').sort((a,b)=>b.lost-a.lost);
+    const prio = new Set(reds.slice(0,TH.capN).map(r=>r.u));
+    rows.forEach(r=>r.prio = prio.has(r.u));
+
     let shown;
     if(group==='all') shown = rows;
     else if(group.startsWith('TOP')){
@@ -863,11 +962,15 @@ function renderMonitor(){
     } else shown = rows.filter(r => r.role===group);
     const counts={red:0,orange:0,green:0,na:0,exempt:0};
     shown.forEach(r=>counts[r.status]++);
-    document.getElementById('mStatStrip').innerHTML = ['red','orange','green','na','exempt'].map(k=>
+    const prioCount = shown.filter(r=>r.prio).length;
+    document.getElementById('mStatStrip').innerHTML =
+      `<div class="stat-chip" style="border:2px solid ${RUST}"><div class="n" style="color:${RUST}">${prioCount}</div><div class="l">★ 本期優先</div></div>` +
+      ['red','orange','green','na','exempt'].map(k=>
       `<div class="stat-chip"><div class="n" style="color:${COLOR[k]}">${counts[k]}</div><div class="l">${BADGE[k]}</div></div>`).join('');
     const ord={red:0,orange:1,green:2,exempt:3,na:4};
     let list=shown.slice();
-    if(sortMode==='alert') list.sort((a,b)=>ord[a.status]-ord[b.status] || b.c1-a.c1);
+    if(sortMode==='lost') list.sort((a,b)=>(b.prio?1:0)-(a.prio?1:0) || b.lost-a.lost);
+    else if(sortMode==='alert') list.sort((a,b)=>ord[a.status]-ord[b.status] || b.lost-a.lost);
     else if(sortMode==='clicks') list.sort((a,b)=>b.c1-a.c1);
     else list.sort((a,b)=>(a.dClick??0)-(b.dClick??0));
     list=list.slice(0,120);
@@ -879,16 +982,18 @@ function renderMonitor(){
       const ordv = {red:0,orange:1,green:2,exempt:3,na:4}[r.status];
       return `<tr onclick='openMonitorModal(${JSON.stringify(r.u)})'>
         <td data-sort="${ordv}"><span class="dot ${r.status==='na'||r.status==='exempt'?'green':r.status}" style="background:${COLOR[r.status]}"></span></td>
-        <td data-sort="${(getArticleTitle(r.u)||'').replace(/"/g,'')}"><b>${getArticleTitle(r.u)}</b><div class="url-sub">${r.u}</div></td>
+        <td data-sort="${(getArticleTitle(r.u)||'').replace(/"/g,'')}">${r.prio?`<span style="color:${RUST};font-weight:700">★ </span>`:''}<b>${getArticleTitle(r.u)}</b><div class="url-sub">${r.u}</div></td>
         <td>${(r.cls.big||'')}${r.cls.mid?' / '+r.cls.mid:''}</td>
-        <td class="num" data-sort="${r.c1}">${fmt(r.c1)}</td>
+        <td class="num" data-sort="${r.c1}">${fmt(r.c1)}${r.lost>0?`<div class="url-sub" style="color:${RUST}">少 ${fmt(r.lost)}</div>`:''}</td>
         <td class="num" data-sort="${r.dClick==null?'':r.dClick.toFixed(2)}">${dc}</td>
         <td class="num" data-sort="${r.p1==null?'':r.p1.toFixed(2)}">${r.p1?r.p1.toFixed(1):'—'}</td>
         <td class="num" data-sort="${r.dPos==null?'':r.dPos.toFixed(2)}">${dp}</td>
         <td class="num" data-sort="${r.achieve==null?'':r.achieve.toFixed(1)}">${ac}</td>
         <td class="num" data-sort="${r.stab.toFixed(1)}">${r.stab>0?r.stab.toFixed(0)+'%':'—'}</td>
+        <td class="num" data-sort="${r.engage==null?'':r.engage.toFixed(1)}">${r.engage==null?'—':r.engage.toFixed(0)+'%'}${r.dEngage==null?'':`<div class="url-sub" style="color:${r.dEngage>=0?TEAL:RUST}">${r.dEngage>=0?'+':''}${r.dEngage.toFixed(0)}pt</div>`}</td>
+        <td class="num" data-sort="${r.cvr==null?'':r.cvr.toFixed(2)}">${r.cvr==null?'—':r.cvr.toFixed(1)}</td>
         <td data-sort="${ordv}"><span class="badge ${r.status==='na'||r.status==='exempt'?'green':r.status}">${BADGE[r.status]}</span><div class="url-sub">${r.action}</div></td></tr>`;
-    }).join('') || `<tr><td colspan="10" style="text-align:center;padding:24px;color:#888">此分群在本期間沒有資料</td></tr>`;
+    }).join('') || `<tr><td colspan="12" style="text-align:center;padding:24px;color:#888">此分群在本期間沒有資料</td></tr>`;
 
     /* 合計／加權平均：點擊與曝光用加總後再算，不是平均各篇的百分比 */
     const C1=list.reduce((s,r)=>s+r.c1,0), I1=list.reduce((s,r)=>s+r.i1,0);
@@ -932,61 +1037,129 @@ function renderMonitor(){
   document.getElementById('sortSel').addEventListener('change', e=>{ sortMode=e.target.value; render(); });
   document.getElementById('thClick').addEventListener('input', e=>{ TH.clickDrop=+e.target.value; document.getElementById('thClickV').textContent=TH.clickDrop+'%'; render(); });
   document.getElementById('thImp').addEventListener('input', e=>{ TH.minImp=+e.target.value; document.getElementById('thImpV').textContent=TH.minImp; render(); });
+  document.getElementById('thCap').addEventListener('input', e=>{ TH.capN=+e.target.value; document.getElementById('thCapV').textContent=TH.capN+'篇'; render(); });
+  document.getElementById('peakSel').addEventListener('change', e=>{ peakMode=e.target.value; render(); });
   render();
 }
 
 /* ============ ⑥ AIO引用監測（含逐月趨勢） ============ */
 function renderAIO(mA, mB){
   const p = document.getElementById('panel-aio');
-  const hasAI = ALL_MONTHS.some(m=>DATA.ai[m]);
-  const hasAIOd = ALL_MONTHS.some(m=>DATA.aioDaily[m]);
-  if(!hasAI && !hasAIOd){ renderEmpty('aio','內容有沒有被AI引用','尚無資料',['data/ai-assistant/YYYY-MM.csv','data/gsc-aio/YYYY-MM-*.csv']); return; }
+  const hasG = ALL_MONTHS.some(m=>DATA.gscAi && DATA.gscAi[m]);
+  const hasR = ALL_MONTHS.some(m=>DATA.aiRef && DATA.aiRef[m]);
+  const hasA = ALL_MONTHS.some(m=>DATA.ai && DATA.ai[m]);
+  if(!hasG && !hasR && !hasA){ renderEmpty('aio','AI 成效：引用端與到站端','尚無資料',['試算表分頁 gsc_ai','試算表分頁 ai_referral','試算表分頁 ai_assistant']); return; }
 
-  let chanTotals={}, totalSessions=0, aiSessions=0;
-  mA.forEach(m=>{ const ai=DATA.ai[m]; if(!ai) return; ai.data.forEach(r=>{
-    const sessions = toNum(r['工作階段']||r['Sessions']);
-    const chan = r['預設頻道群組']||r['Session default channel group']||r['頻道']||Object.values(r)[0];
-    chanTotals[chan]=(chanTotals[chan]||0)+sessions; totalSessions+=sessions;
-    if(String(chan).includes('AI Assistant')) aiSessions += sessions;
-  });});
-  let aioTotal=0, aioTopPages=[];
-  mA.forEach(m=>{ const d=DATA.aioDaily[m]; if(d) d.data.forEach(r=>aioTotal+=toNum(r['曝光'])); });
-  const latestAIOp = [...mA].reverse().find(m=>DATA.aioPages[m]);
-  if(latestAIOp) aioTopPages = DATA.aioPages[latestAIOp].data.slice(0,10).map(r=>({url:String(r['熱門網頁']||Object.values(r)[0]).replace(SITE_ORIGIN,''), impressions:toNum(r['曝光'])}));
+  const isExpert = u => /expert|peizhen|macromicro|hoshichang|law_y-rlee/i.test(String(u||''));
+  const catOf = u => { const s=String(u||''); return s.startsWith('/life-proposal') ? '生活提案文章'
+                      : (s.startsWith('/buildings') ? '建案頁' : '其他'); };
 
-  // 全歷史逐月趨勢
-  const aiTrend = ALL_MONTHS.map(m=>{
-    const ai = DATA.ai[m]; let ses=0, total=0;
-    if(ai) ai.data.forEach(r=>{ const s=toNum(r['工作階段']||r['Sessions']); total+=s; const chan=r['預設頻道群組']||r['Session default channel group']||r['頻道']||Object.values(r)[0]; if(String(chan).includes('AI Assistant')) ses+=s; });
-    return {month:m, ses, total};
-  });
-  const aioTrend = ALL_MONTHS.map(m=>{ const d=DATA.aioDaily[m]; let t=0; if(d) d.data.forEach(r=>t+=toNum(r['曝光'])); return {month:m, total:t}; });
+  /* ---- 引用端：GSC 生成式 AI ---- */
+  function gscSeries(months){
+    return months.map(m=>{
+      const d = DATA.gscAi && DATA.gscAi[m]; let imp=0, art=0, exp=0, pages=0;
+      if(d) d.data.forEach(r=>{
+        const u = normUrl(r['到達網頁']), v = toNum(r['AIO曝光']);
+        imp+=v; pages++;
+        if(catOf(u)==='生活提案文章'){ art+=v; if(isExpert(u)) exp+=v; }
+      });
+      return {month:m, imp, art, exp, pages};
+    });
+  }
+  /* ---- 到站端：ai_referral（長期）＋ ai_assistant（落地頁/參與度）---- */
+  function refSeries(months){
+    return months.map(m=>{
+      const d = DATA.aiRef && DATA.aiRef[m]; let ses=0, art=0; const byTool={};
+      if(d) d.data.forEach(r=>{
+        const v=toNum(r['工作階段']), tool=String(r['AI工具']||'其他');
+        ses+=v; byTool[tool]=(byTool[tool]||0)+v;
+        if(catOf(normUrl(r['到達網頁']))==='生活提案文章') art+=v;
+      });
+      return {month:m, ses, art, byTool};
+    });
+  }
+  const gAll = gscSeries(ALL_MONTHS), rAll = refSeries(ALL_MONTHS);
+  const gCur = gscSeries(mA), rCur = refSeries(mA);
+  const sum = (a,k)=>a.reduce((t,x)=>t+(x[k]||0),0);
+  const gImp=sum(gCur,'imp'), gArt=sum(gCur,'art'), gExp=sum(gCur,'exp');
+  const rSes=sum(rCur,'ses'), rArt=sum(rCur,'art');
+
+  // 當期 GSC 總曝光（對照用）
+  let gscTotal=0; mA.forEach(m=>{ const d=DATA.seo && DATA.seo[m];
+    if(d) d.data.forEach(r=>gscTotal+=toNum(r['Google自然搜尋曝光次數'])); });
+
+  // 參與度（ai_assistant）
+  let aSes=0, aEng=0;
+  mA.forEach(m=>{ const d=DATA.ai && DATA.ai[m]; if(!d) return;
+    d.data.forEach(r=>{ const s0=toNum(r['工作階段']); let er=toNum(r['參與度']);
+      if(er>1) er=er/Math.max(1,s0); aSes+=s0; aEng+=er*s0; }); });
+
+  // 引用最多的頁（當期合計）
+  const pg={};
+  mA.forEach(m=>{ const d=DATA.gscAi && DATA.gscAi[m]; if(!d) return;
+    d.data.forEach(r=>{ const u=normUrl(r['到達網頁']); pg[u]=(pg[u]||0)+toNum(r['AIO曝光']); }); });
+  const topPages=Object.entries(pg).sort((a,b)=>b[1]-a[1]).slice(0,12);
+
+  // 各 AI 工具（當期）
+  const tool={};
+  rCur.forEach(x=>Object.entries(x.byTool).forEach(([k,v])=>tool[k]=(tool[k]||0)+v));
+  const topTool=Object.entries(tool).sort((a,b)=>b[1]-a[1]).slice(0,8);
 
   p.innerHTML = `
-    ${panelHead('內容有沒有被AI引用', '了解內容有沒有被AI引用、AI有沒有帶來流量', 'GA4 AI Assistant ＋ Google Search Console（生成式AI報告）')}
-    <div class="stat-row">
-      <div class="stat-chip"><div class="n">${fmt(aiSessions)}</div><div class="l">AI帶來的工作階段(ChatGPT/Gemini/DeepSeek/Copilot/Grok)</div></div>
-      <div class="stat-chip"><div class="n">${totalSessions?(aiSessions/totalSessions*100).toFixed(2):0}%</div><div class="l">佔全站工作階段比例</div></div>
-      <div class="stat-chip"><div class="n">${fmt(aioTotal)}</div><div class="l">AI摘要曝光總數（當期）</div></div>
-    </div>
-    <div class="grid2">
-      <div class="card"><h3>AI帶來的工作階段：逐月趨勢</h3><div class="cap">${ALL_MONTHS[0]}~${ALL_MONTHS[ALL_MONTHS.length-1]}</div>${chartBox('aiTrendChart',220)}</div>
-      <div class="card"><h3>AI摘要曝光：逐月趨勢</h3><div class="cap">${ALL_MONTHS[0]}~${ALL_MONTHS[ALL_MONTHS.length-1]}</div>${chartBox('aioTrendChart',220)}</div>
-    </div>
-    <div class="grid2">
-      <div class="card"><h3>流量管道分布（含AI Assistant，當期）</h3>${chartBox('aioChan',220)}</div>
-      <div class="card"><h3>被AI引用曝光最高的頁面（當期）</h3><table><thead><tr><th>頁面</th><th class="num">曝光</th></tr></thead>
-      <tbody>${aioTopPages.map(r=>`<tr><td>${articleLink(r.url)}</td><td class="num">${fmt(r.impressions)}</td></tr>`).join('')}</tbody></table></div>
-    </div>
-    <div class="note-box">兩個資料來源單位不同（工作階段 vs 曝光次數），僅能分別看趨勢，不可相加。Perplexity目前兩個資料源都涵蓋不到。</div>
-  `;
-  safeChart('aiTrendChart', { type:'line', data:{labels:aiTrend.map(s=>monthLabel(s.month)), datasets:[{label:'AI Assistant工作階段', data:aiTrend.map(s=>s.ses), borderColor:GOLD, backgroundColor:GOLD, tension:.3}]}, options:{plugins:{legend:{display:false}}} });
-  safeChart('aioTrendChart', { type:'line', data:{labels:aioTrend.map(s=>monthLabel(s.month)), datasets:[{label:'AI摘要曝光', data:aioTrend.map(s=>s.total), borderColor:SLATE, backgroundColor:SLATE, tension:.3}]}, options:{plugins:{legend:{display:false}}} });
-  const chans = Object.keys(chanTotals);
-  safeChart('aioChan', { type:'bar', data:{labels:chans, datasets:[{label:'工作階段', data:chans.map(c=>chanTotals[c]), backgroundColor: chans.map(c=>String(c).includes('AI Assistant')?GOLD:SLATE)}]}, options:{plugins:{legend:{display:false}}, indexAxis:'y'} });
-}
+    ${panelHead('AI 成效：引用端與到站端', 'AI 有沒有看見我們的內容（引用端），以及 AI 有沒有把人送過來（到站端）',
+      'GSC 生成式AI ＋ GA4 AI Assistant／AI 來源', '兩端單位不同，只能分別看，不可相加')}
 
-/* ============ ⑦ 導流成效：內容→建案 ============ */
+    <h3 class="section-label">① 引用端：Google AI 摘要引用了我們多少（單位：曝光）</h3>
+    <div class="stat-row">
+      <div class="stat-chip"><div class="n">${fmt(gImp)}</div><div class="l">AI 摘要曝光（當期）</div></div>
+      <div class="stat-chip"><div class="n">${gscTotal?(gImp/gscTotal*100).toFixed(1):'—'}%</div><div class="l">佔 GSC 總曝光</div></div>
+      <div class="stat-chip"><div class="n">${gImp?(gArt/gImp*100).toFixed(0):0}%</div><div class="l">引用落在生活提案文章</div></div>
+      <div class="stat-chip"><div class="n">${gArt?(gExp/gArt*100).toFixed(0):0}%</div><div class="l">其中專家專欄佔比</div></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><h3>AI 摘要曝光 vs 非 AI 曝光</h3>
+        <div class="cap">兩條都來自 GSC，可直接比較。衰退若集中在非 AI 曝光，代表問題在傳統搜尋而非被 AI 取代</div>
+        ${chartBox('aioVsRest',230)}</div>
+      <div class="card"><h3>被 AI 摘要引用最多的頁（當期）</h3>
+        <table><thead><tr><th>頁面</th><th class="num">AIO曝光</th></tr></thead><tbody>
+        ${topPages.map(([u,v])=>`<tr><td>${articleLink(u)}${isExpert(u)?' <span class="badge">專家</span>':''}</td><td class="num">${fmt(v)}</td></tr>`).join('') || '<tr><td colspan="2">當期無資料</td></tr>'}
+        </tbody></table></div>
+    </div>
+
+    <h3 class="section-label">② 到站端：AI 助理把多少人送進站（單位：工作階段）</h3>
+    <div class="stat-row">
+      <div class="stat-chip"><div class="n">${fmt(rSes)}</div><div class="l">AI 導流工作階段（當期）</div></div>
+      <div class="stat-chip"><div class="n">${rSes?(rArt/rSes*100).toFixed(0):0}%</div><div class="l">落在生活提案文章</div></div>
+      <div class="stat-chip"><div class="n">${aSes?(aEng/aSes*100).toFixed(0):'—'}%</div><div class="l">參與率（AI Assistant）</div></div>
+      <div class="stat-chip"><div class="n">${fmt(aSes)}</div><div class="l">GA4 內建管道計得（會低估）</div></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><h3>AI 導流：逐月趨勢</h3><div class="cap">${ALL_MONTHS[0]} ~ ${ALL_MONTHS[ALL_MONTHS.length-1]}，來源關鍵字版（較完整）</div>${chartBox('aiRefTrend',230)}</div>
+      <div class="card"><h3>各 AI 工具導流（當期）</h3>
+        <table><thead><tr><th>AI 工具</th><th class="num">工作階段</th><th class="num">佔比</th></tr></thead><tbody>
+        ${topTool.map(([k,v])=>`<tr><td>${k}</td><td class="num">${fmt(v)}</td><td class="num">${rSes?(v/rSes*100).toFixed(1):0}%</td></tr>`).join('') || '<tr><td colspan="3">當期無資料</td></tr>'}
+        </tbody></table></div>
+    </div>
+    <div class="note-box">
+      <b>兩端不可相加</b>：引用端是 GSC 的曝光次數，到站端是 GA4 的工作階段，量測對象不同。<br>
+      <b>GA4 內建管道會低估</b>：同樣是 ChatGPT，GA4 有時歸 ai-assistant、有時歸 referral 或 (not set)，所以趨勢用來源關鍵字版。<br>
+      <b>AI Overview 的點擊測不到</b>：AIO 的點擊在 GA4 仍算 Organic Search，GSC 也不分開列，只能用 CTR 變化間接推論。
+    </div>`;
+
+  const nonAI = gAll.map((g,i)=>{
+    let tot=0; const d=DATA.seo && DATA.seo[g.month];
+    if(d) d.data.forEach(r=>tot+=toNum(r['Google自然搜尋曝光次數']));
+    return tot ? Math.max(0, tot-g.imp) : null;
+  });
+  safeChart('aioVsRest', { type:'line', data:{ labels:gAll.map(s=>monthLabel(s.month)), datasets:[
+      {label:'AI 摘要曝光', data:gAll.map(s=>s.imp||null), borderColor:GOLD, backgroundColor:GOLD, tension:.3, spanGaps:true},
+      {label:'非 AI 曝光', data:nonAI, borderColor:SLATE, backgroundColor:SLATE, tension:.3, spanGaps:true}
+    ]}, options:{plugins:{legend:{position:'bottom'}}} });
+  safeChart('aiRefTrend', { type:'line', data:{ labels:rAll.map(s=>monthLabel(s.month)), datasets:[
+      {label:'AI 導流工作階段', data:rAll.map(s=>s.ses||null), borderColor:TEAL, backgroundColor:TEAL, tension:.3, spanGaps:true},
+      {label:'其中落在文章', data:rAll.map(s=>s.art||null), borderColor:GOLD, backgroundColor:GOLD, tension:.3, borderDash:[4,3], spanGaps:true}
+    ]}, options:{plugins:{legend:{position:'bottom'}}} });
+}
 function renderPath(mA){
   const p = document.getElementById('panel-path');
   const utmMonths = mA.filter(m=>DATA.utm[m]);
@@ -1149,6 +1322,16 @@ function renderGuide(){
         ${stat(DATA.seo,'data/gsc-page/')}${stat(DATA.ai,'data/ai-assistant/')}${stat(DATA.utm,'data/utm-buttons/')}${stat(DATA.bannerAds,'data/banner-ads/')}
         <tr><td>data/classification/latest.csv</td><td>${Object.keys(CLS_MAP).length ? ('已載入，'+Object.keys(CLS_MAP).length+'筆') : '<i>尚無資料</i>'}</td></tr>
       </tbody></table>
+    </div>
+    <div class="card" style="margin-top:16px;"><h3>資料來源一覽（來自試算表 sources 分頁）</h3>
+      <div class="cap">每次要重撈資料時看這張就好。內容改在試算表的 sources 分頁，這裡會自動跟著變。</div>
+      ${(window.SOURCES && window.SOURCES.length) ? `<table style="font-size:12px"><thead><tr>
+        <th>分頁／資料表</th><th>用在哪個頁籤</th><th>來源系統</th><th style="width:30%">怎麼撈</th><th>更新頻率</th><th>負責人</th><th style="width:22%">備註與已知問題</th></tr></thead>
+        <tbody>${window.SOURCES.map(r=>`<tr>
+          <td><b>${r['分頁／資料表']||''}</b></td><td>${r['用在哪個頁籤']||''}</td><td>${r['來源系統']||''}</td>
+          <td>${r['怎麼撈（照這個做就對）']||''}</td><td>${r['更新頻率']||''}</td><td>${r['負責人']||''}</td>
+          <td style="color:#A14232">${r['備註與已知問題']||''}</td></tr>`).join('')}</tbody></table>`
+        : '<div class="cap" style="color:#A14232">尚未讀到 sources 分頁。請確認主資料表裡有一個名為 sources 的分頁，且共用設定為「知道連結的任何人」。</div>'}
     </div>
     <div class="card" style="margin-top:16px;"><h3>怎麼加新月份資料</h3>
       <ol style="font-size:12.5px;color:var(--ink-soft);line-height:1.9;">
