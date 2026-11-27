@@ -21,7 +21,11 @@ const SHEET_MAP = {
   'ai-assistant':   'ai_assistant',
   'gsc-aio':        'gsc_aio',
   'social':         'social',
-  'classification': 'classification'
+  'classification': 'classification',
+  'sources':        'sources',
+  'pageview-organic':'pageview_organic',
+  'gsc-ai':         'gsc_ai',
+  'ai-referral':    'ai_referral'
 };
 
 const MONTH_COL = '年月';   // 長表的月份欄位名
@@ -115,4 +119,9 @@ if (typeof window.toNum !== 'function') {
     const n = parseFloat(String(v).replace(/[,%\s"]/g, ''));
     return isNaN(n) ? 0 : n;
   };
+}
+
+/* 讀 sources 分頁：每個資料表的來源與撈法，供儀表板標註用 */
+async function loadSources() {
+  try { return await fetchSheet('sources'); } catch (e) { return []; }
 }
